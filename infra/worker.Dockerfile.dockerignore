@@ -1,0 +1,10 @@
+**
+!backend/
+!backend/pyproject.toml
+!backend/uv.lock
+!backend/app/
+!backend/app/**
+!backend/worker/
+!backend/worker/**
+**/__pycache__/
+**/*.pyc

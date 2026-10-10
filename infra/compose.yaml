@@ -1,0 +1,74 @@
+name: autoinsight
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16@sha256:ccc6e83d6e35e931dc7c5def2022729d5a6c370318d099181995567ff1fb4d6b
+    environment:
+      POSTGRES_DB: autoinsight
+      POSTGRES_USER: autoinsight
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run Setup-Dev.ps1 first}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks: [services]
+    mem_limit: 512m
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U autoinsight -d autoinsight"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  redis:
+    image: redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Run Setup-Dev.ps1 first}
+    command: [sh, -c, 'exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"']
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6380}:6379"
+    volumes:
+      - redis_data:/data
+    networks: [services]
+    mem_limit: 128m
+    healthcheck:
+      test: [CMD-SHELL, 'REDISCLI_AUTH="$$REDIS_PASSWORD" redis-cli ping | grep -q PONG']
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  worker:
+    build:
+      context: ..
+      dockerfile: infra/worker.Dockerfile
+    environment:
+      APP_ENV: development
+      INFRASTRUCTURE_ENABLED: "true"
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run setup first}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Run setup first}
+      RQ_QUEUE: autoinsight
+      FILE_STORAGE_ROOT: /app/storage/artifacts
+    volumes:
+      - ../storage/artifacts:/app/storage/artifacts
+    networks: [services]
+    mem_limit: 512m
+    init: true
+    depends_on:
+      redis: {condition: service_healthy}
+      postgres: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, python, -m, worker.healthcheck]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  services:
+    driver: bridge
