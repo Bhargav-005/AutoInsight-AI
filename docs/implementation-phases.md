@@ -20,7 +20,7 @@ The master instructions replace the implementation PDF's earlier 0-6 numbering. 
 
 Phase 1 Checkpoint A delivered repository foundation and configuration. See [its scope and checks](checkpoint-a.md). The user subsequently authorized completion of all Phase 1 work without intermediate checkpoint gates. Minimal frontend/API scaffolds, locked dependencies, isolated containers, migrations, worker and artifact connectivity, tests and scripts are implemented; see [the verification record](checkpoint-b.md).
 
-Stop after Phase 1 verification. Phase 2 requires user approval. Authentication, ingestion, dashboards, ML, RAG and LangGraph are outside the delivered scope.
+Phase 2 implements all eight frontend interface areas, responsive navigation, local validation and sample interactions, accessible chart alternatives and honest availability states. Development fixtures are explicitly labeled and excluded from production builds. Backend authentication, ingestion, analytics execution, ML, RAG and LangGraph remain outside this phase. Stop after Phase 2 verification; Phase 3 requires user approval.
 
 ## Cross-phase release rules
 

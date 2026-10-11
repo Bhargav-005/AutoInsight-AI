@@ -2,7 +2,11 @@
 
 AutoInsight AI is an explainable, local-first platform for tabular data analysis and supervised machine learning. The planned workflow connects dataset profiling, approved cleaning, deterministic analytics, controlled ML experiments, evidence-backed AI research and downloadable reports.
 
-**Current delivery: Phase 1 - repository and infrastructure foundation.** React displays measured API status; FastAPI checks PostgreSQL, migrations, Redis and worker heartbeats. Dedicated persistent services and shared artifact storage are implemented. Authentication and data workflows remain in later phases.
+**Current delivery: Phase 2 - frontend interfaces.** The responsive shell includes authentication forms, dashboard, datasets, Cleaning Studio, seven-role research workspace, analytics, ML Studio, and reports/history. The original measured API status is preserved at `/status`. Authentication and data execution remain in later backend phases; all workspace screens explicitly identify themselves as frontend previews.
+
+For frontend-only exploration, run `npm.cmd ci` and `npm.cmd run dev` in `E:\FSI\frontend`, open <http://127.0.0.1:5173>, and select **Open frontend preview**. **Explore sample workspace** loads labeled synthetic fixtures in development only. Samples are excluded from production bundles; no credentials, uploads or jobs are submitted by preview controls. Run `npm.cmd run test:e2e` for desktop/mobile journeys and the 320/375/768/1024/1440-pixel viewport checks. Chromium must be installed as described in the Windows development guide.
+
+Phase 2 verification (2026-10-11): TypeScript, ESLint, 31 component tests and the production build passed. Playwright passed 13 cases; one duplicate mobile viewport-matrix case is intentionally skipped because the full matrix runs in the desktop project. Automated accessibility checks found no violations on the tested core pages. Desktop, tablet and mobile screenshots were visually reviewed. Chromium was tested; broader browser and manual screen-reader testing remain future verification work.
 
 ## Workspace and repository
 
@@ -87,4 +91,4 @@ See [Windows development](docs/development-windows.md) for configuration and tes
 - Require approval for persistent cleaning operations.
 - Use only allowlisted analytical tools; no generated Python or arbitrary shell/SQL execution.
 - Test each phase and report failures and limitations honestly.
-- Do not commit, push, advance to Phase 2 or configure public access without the required user approval.
+- Do not commit, push, advance to Phase 3 or configure public access without the required user approval.
