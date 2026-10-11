@@ -1,10 +1,10 @@
 # AutoInsight AI
 
-AutoInsight AI is an explainable, local-first platform for tabular data analysis and supervised machine learning. The planned workflow connects dataset profiling, approved cleaning, deterministic analytics, controlled ML experiments, evidence-backed AI research and downloadable reports.
+AutoInsight AI is an explainable, local-first platform for tabular data analysis, supervised machine learning and evidence-backed local research.
 
-**Current delivery: Phase 6 — real supervised machine learning.** Authenticated users can upload, profile, clean and analyze immutable dataset versions, then train Logistic Regression, Random Forest Classifier, Ridge or Random Forest Regressor in the Linux RQ worker. ML Studio shows held-out metrics, dummy baselines, explanations, compatible experiment comparisons and predictions from verified saved pipelines. Every dataset, experiment and prediction lookup is owner-scoped.
+**Current delivery: Phase 7 — local research orchestration.** Authenticated users can request an Ollama-generated plan for an owned immutable dataset version, inspect and approve or reject it, then follow a LangGraph/RQ workflow across seven logical roles. Allowlisted deterministic tools produce persisted evidence; verification checks the dataset/version/tool provenance, and numerical findings are rendered from the stored calculation. Phases 1–6 remain available, including immutable cleaning, analytics and supervised ML.
 
-Agents, RAG and reporting execution remain in later phases. Analytics is deterministic over bounded full versions; category and chart outputs are capped and results state their source and method. Profiles mark high-cardinality distinct counts and large-column medians as estimates. Registration requires a display name, valid email and 12–128 character password. No demo credentials are seeded.
+Document ingestion, embeddings, retrieval citations and PDF reports remain in Phase 8. Analytics is deterministic over bounded full versions; category and chart outputs are capped and results state their source and method. Profiles mark high-cardinality distinct counts and large-column medians as estimates. Registration requires a display name, valid email and 12–128 character password. No demo credentials are seeded.
 
 For normal development, start the infrastructure, migrate, and run the API and frontend as below. Open **Get Started** on the landing page. Visual sample controls are disabled by default; an explicit development-only `VITE_ENABLE_VISUAL_SAMPLES=true` enables labeled fixtures **after real sign-in**, solely for UI regression testing. They never establish authentication or bypass API authorization and are excluded from production builds.
 
@@ -39,7 +39,7 @@ Application: `backend/` (FastAPI, settings, health checks and Pytest), `frontend
 
 ## Local topology
 
-React/Vite and FastAPI run locally. Dedicated PostgreSQL 16/pgvector and Redis containers support a Linux RQ worker through Docker Desktop/WSL2. The API and worker share `E:\FSI\storage\artifacts`. Database and Redis data use named Docker volumes. Later phases introduce deterministic data/ML tools, LangGraph and the existing local Ollama model.
+React/Vite and FastAPI run locally. Dedicated PostgreSQL 16/pgvector and Redis containers support a Linux RQ worker through Docker Desktop/WSL2. The API and worker share `E:\FSI\storage\artifacts`. Database and Redis data use named Docker volumes. The worker reaches the existing Windows Ollama API through Docker Desktop's `host.docker.internal` gateway; Ollama continues using `D:\OllamaModels`.
 
 Public access is deferred to Phase 10 after security testing. The public demo will depend on the laptop and local backend being online.
 
@@ -91,7 +91,7 @@ See [Windows development](docs/development-windows.md) for configuration and tes
 - Require approval for persistent cleaning operations.
 - Use only allowlisted analytical tools; no generated Python or arbitrary shell/SQL execution.
 - Test each phase and report failures and limitations honestly.
-- Do not commit, push, advance to Phase 7 or configure public access without the required user approval.
+- Do not commit, push, advance to Phase 8 or configure public access without the required user approval.
 
 ## Phase 6 ML development
 
@@ -102,3 +102,29 @@ Open a ready dataset in ML Studio, choose a raw or cleaned version and explicit 
 Limits: 50–50,000 labeled rows (source at most 50,000), at least 30 train/10 test rows, 30 features, 1,000,000 selected feature cells, 100 categorical values per feature, 2–20 classes with at least five examples per class. Dates, free text, grouped and time-series evaluation are unsupported. Constant-only features and invalid targets are rejected. The single one-CPU worker has a 1 GiB memory limit; training attempts time out after at most 600 seconds. At most four ML jobs are admitted globally/two per user; failed runs can retry up to three attempts. Serialized models are capped at 100 MB. Hard-interrupted job status is reconciled on subsequent experiment reads.
 
 Focused checks: `uv run --project backend pytest backend/tests/test_ml.py`, and from `backend`, `uv run pytest tests/test_ml_api.py -m integration`. From `frontend`, run `npm.cmd run test:e2e -- e2e/phase6.spec.ts --project=desktop`, `npm.cmd run typecheck`, `npm.cmd run lint` and `npm.cmd run build`. Integration tests create isolated synthetic users/datasets and leave them in local storage for persistence verification. Comprehensive regression and performance testing remains Phase 9 work.
+
+## Phase 7 local research
+
+The configured model is `qwen3.5:4b-q4_K_M`. `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, `OLLAMA_REQUEST_TIMEOUT_SECONDS`, `OLLAMA_TEMPERATURE`, `OLLAMA_MAX_OUTPUT_TOKENS`, `LLM_CONTEXT_TOKENS` and `LLM_THINKING` configure local inference. Planning uses JSON-schema responses and bounded schema/profile metadata, never dataset cell samples; one invalid plan gets one bounded correction attempt. One local inference lock is shared by API and worker through the dedicated Redis instance. A plan may be revised once; approval is bound to the exact validated plan hash and dataset version. Research executes one step at a time with a maximum of 12 steps. Cancellation is honored at step boundaries, and interrupted jobs fail visibly.
+
+Roles: Data Understanding, Data Cleaning, Data Analysis, ML Engineer, Research & Verification, RAG Knowledge and Report & Insights. Phase 7 has no document retrieval: the knowledge role states that this capability starts in Phase 8. ML tools inspect saved completed runs only; research does not start training or apply cleaning operations.
+
+The read-only registry provides `get_dataset_profile`, `get_column_information`, `get_missing_value_summary`, `get_cleaning_suggestions`, `run_descriptive_summary`, `run_grouped_aggregate`, `run_correlation`, `get_category_distribution`, `get_completed_ml_runs`, `get_ml_evaluation`, `get_feature_importance`, `verify_evidence`, `assess_knowledge_need` and `synthesize_evidence`. It does not provide Python, SQL, shell, arbitrary HTTP, mutation or training tools.
+
+Run focused verification from PowerShell:
+
+```powershell
+Set-Location -LiteralPath 'E:\FSI\backend'
+uv run ruff check app worker migrations tests/test_research.py tests/test_research_api.py
+uv run pytest tests/test_research.py -q
+uv run pytest tests/test_research_api.py -m integration -q
+uv run alembic check
+```
+
+```powershell
+Set-Location -LiteralPath 'E:\FSI\frontend'
+npm.cmd run test:e2e -- e2e/phase7.spec.ts --project=desktop
+npm.cmd run typecheck
+npm.cmd run lint
+npm.cmd run build
+```

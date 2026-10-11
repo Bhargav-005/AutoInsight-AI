@@ -15,6 +15,7 @@ from app.api.datasets import router as datasets_router
 from app.api.health import router
 from app.api.ml import router as ml_router
 from app.api.phase5 import router as phase5_router
+from app.api.research import router as research_router
 from app.core.config import Settings
 from app.core.errors import AppError, app_error, error_response, http_error, validation_error
 from app.core.logging import configure_logging, log_event
@@ -60,6 +61,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(datasets_router)
     app.include_router(phase5_router)
     app.include_router(ml_router)
+    app.include_router(research_router)
     app.add_exception_handler(AppError, app_error)
     app.add_exception_handler(HTTPException, http_error)
     app.add_exception_handler(RequestValidationError, validation_error)

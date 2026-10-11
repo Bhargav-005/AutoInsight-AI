@@ -191,7 +191,9 @@ class ResearchRun(Identity, Created, Owned, Base):
     max_steps: Mapped[int] = mapped_column(Integer, server_default="12")
     __table_args__ = owned(
         parent("dataset_version_id", "dataset_versions"),
-        choices("status", "draft awaiting_approval queued running completed failed cancelled"),
+        choices(
+            "status", "draft awaiting_approval queued running completed failed cancelled rejected"
+        ),
         CheckConstraint("max_steps BETWEEN 1 AND 50", name="step_budget"),
     )
 

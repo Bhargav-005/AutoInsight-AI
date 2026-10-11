@@ -178,6 +178,7 @@ export default function Shell() {
     if (location.pathname.includes('/clean')) navigate(`/datasets/${next}/clean`)
     else if (location.pathname.startsWith('/analysis/')) navigate(`/analysis/${next}`)
     else if (location.pathname.startsWith('/models/')) navigate(`/models/${next}`)
+    else if (location.pathname.startsWith('/research/')) navigate(`/research/${next}`)
     else if (/^\/datasets\/[^/]+$/.test(location.pathname)) navigate(`/datasets/${next}`)
   }
 
@@ -191,12 +192,17 @@ export default function Shell() {
     if (label === 'ML Studio') {
       return activeDatasetId ? `/models/${activeDatasetId}` : '/models/preview'
     }
+    if (label === 'AI Research') {
+      return activeDatasetId ? `/research/${activeDatasetId}` : '/research/preview'
+    }
     return fallback
   }
   const current = location.pathname.includes('/clean')
     ? 'Cleaning Studio'
     : location.pathname.startsWith('/analysis/')
       ? 'Analytics'
+      : location.pathname.startsWith('/research/')
+        ? 'AI Research'
       : location.pathname.startsWith('/datasets')
         ? 'Datasets'
         : (navigation.find((item) =>

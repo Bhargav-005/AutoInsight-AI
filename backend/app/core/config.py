@@ -44,6 +44,15 @@ class Settings(BaseSettings):
     auth_rate_namespace: str = "autoinsight:auth"
     auth_login_limit: int = Field(default=10, ge=1, le=100)
     auth_register_limit: int = Field(default=5, ge=1, le=100)
+    ollama_base_url: str = "http://127.0.0.1:11434"
+    ollama_model: str = "qwen3.5:4b-q4_K_M"
+    ollama_request_timeout_seconds: int = Field(default=120, ge=10, le=300)
+    ollama_temperature: float = Field(default=0.0, ge=0.0, le=0.5)
+    ollama_max_output_tokens: int = Field(default=1200, ge=128, le=4096)
+    llm_context_tokens: int = Field(default=4096, ge=1024, le=8192)
+    llm_thinking: bool = False
+    max_concurrent_research_runs: int = Field(default=1, ge=1, le=2)
+    max_research_steps: int = Field(default=12, ge=1, le=12)
 
     @property
     def secure_cookies(self) -> bool:
@@ -59,6 +68,20 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_infrastructure(self):
+        ollama = urlsplit(self.ollama_base_url)
+        if (
+            ollama.scheme != "http"
+            or ollama.hostname not in {"127.0.0.1", "localhost", "::1", "host.docker.internal"}
+            or ollama.username is not None
+            or ollama.password is not None
+            or ollama.path not in {"", "/"}
+            or ollama.query
+            or ollama.fragment
+        ):
+            raise ValueError("Ollama must use an explicit local HTTP endpoint")
+        _ = ollama.port
+        if not self.ollama_model.strip() or len(self.ollama_model) > 100:
+            raise ValueError("Configure a valid local Ollama model name")
         if self.app_env == "production":
             if len(self.auth_csrf_secret.get_secret_value()) < 32:
                 raise ValueError("Production requires a persistent CSRF secret")

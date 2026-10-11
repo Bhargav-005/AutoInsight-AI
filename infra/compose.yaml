@@ -52,11 +52,21 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD:?Run setup first}
       RQ_QUEUE: autoinsight
       FILE_STORAGE_ROOT: /app/storage/artifacts
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3.5:4b-q4_K_M}
+      OLLAMA_REQUEST_TIMEOUT_SECONDS: ${OLLAMA_REQUEST_TIMEOUT_SECONDS:-120}
+      OLLAMA_TEMPERATURE: ${OLLAMA_TEMPERATURE:-0.0}
+      OLLAMA_MAX_OUTPUT_TOKENS: ${OLLAMA_MAX_OUTPUT_TOKENS:-1200}
+      LLM_CONTEXT_TOKENS: ${LLM_CONTEXT_TOKENS:-4096}
+      LLM_THINKING: ${LLM_THINKING:-false}
+      MAX_AGENT_STEPS: ${MAX_AGENT_STEPS:-12}
       OMP_NUM_THREADS: "1"
       OPENBLAS_NUM_THREADS: "1"
       MKL_NUM_THREADS: "1"
     volumes:
       - ../storage/artifacts:/app/storage/artifacts
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks: [services]
     mem_limit: 1g
     cpus: 1.0

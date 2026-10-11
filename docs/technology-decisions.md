@@ -1,6 +1,6 @@
 # Technology decisions
 
-These decisions record the approved stack. Phase 1 frontend/API, infrastructure, worker and testing dependencies are installed and locked; later-phase packages remain planned.
+These decisions record the approved stack. Dependencies for Phases 1–7 are installed and locked; later-phase packages remain planned.
 
 | Concern | Decision | Delivery boundary |
 | --- | --- | --- |
@@ -12,8 +12,8 @@ These decisions record the approved stack. Phase 1 frontend/API, infrastructure,
 | Jobs | Redis and Linux RQ worker through Docker Desktop/WSL2; JSON serialization | Connectivity in Phase 1 |
 | Data | Pandas, NumPy, DuckDB with allowlisted operations | Phases 4-5 |
 | ML | scikit-learn Pipeline/ColumnTransformer; supervised classification/regression | Phase 6 |
-| Local LLM | Existing Ollama; `qwen3.5:4b-q4_K_M` | Benchmarked by owner; application integration in Phase 7 |
-| Orchestration | LangGraph; exactly seven specialist roles; shared model | Phase 7 |
+| Local LLM | Existing Ollama; `qwen3.5:4b-q4_K_M`; JSON-schema plans; one shared inference lock | Owner benchmark and real local structured-plan test passed in Phase 7 |
+| Orchestration | Typed LangGraph planning/execution graphs; seven logical roles; shared model | Implemented in Phase 7; API/worker share PostgreSQL, Redis and artifacts |
 | RAG | sentence-transformers and owner-scoped pgvector retrieval | Phase 8 |
 | Reports | ReportLab and CSV exports; static chart rendering selected when needed | Phase 8 |
 | Tests | Pytest, Vitest, Playwright; security and agent evaluations | Infrastructure in Phase 1; features tested as delivered |
@@ -34,7 +34,7 @@ Compatibility references: [FastAPI package metadata](https://pypi.org/project/fa
 - Authentication transport, refresh-session revocation and CSRF behavior: Phase 3.
 - CSV encodings, worksheet selection and decompression limits: Phase 4.
 - Supported estimators, split strategies and rejection rules: Phase 6.
-- Durable orchestration checkpoints and recovery semantics: Phase 7.
+- Durable graph checkpoints and re-planning recovery after worker loss: later hardening; persisted runs fail visibly after interrupted RQ jobs.
 - Embedding model and exact vector dimension; static report charts: Phase 8.
 - Eligible hosting provider and protected gateway: Phase 10.
 

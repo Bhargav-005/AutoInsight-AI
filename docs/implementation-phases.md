@@ -11,16 +11,16 @@ The master instructions replace the implementation PDF's earlier 0-6 numbering. 
 | 4 - Dataset upload and profiling | CSV/XLSX validation, immutable raw artifacts, checksums, preview, schema and deterministic profiles | Invalid/oversized inputs rejected; profiles match independent reference calculations; resource limits enforced |
 | 5 - Cleaning and analytics | Proposed transforms, preview/approval/rejection, immutable lineage, aggregates, filters, correlations, charts and supported exports | New versions only after approval; raw checksum unchanged; computed chart values and evidence agree |
 | 6 - Machine learning | Classification/regression, confirmed target/task, safe splits, dummy baselines, candidates, actual metrics and validated predictions | Leakage/repeatability tests; two classification datasets and at least one regression dataset; stored configuration, version and artifact provenance |
-| 7 - Multi-agent Research Mode | Seven typed roles, tool registry, LangGraph, plan approval, bounded execution/replan and trace | Safe selection and rejection tests; enforced approval/step/replan limits; timeouts/failures visible; evidence links valid |
+| 7 - Multi-agent Research Mode | Seven typed roles, local Ollama, allowlisted tools, LangGraph, plan approval, one bounded revision, RQ execution and evidence | Real local plan generation; approval and ownership checks; 12-step limit; visible failures/cancellation; verified evidence-linked claims |
 | 8 - RAG and reporting | Curated/user-owned document retrieval, citations, verification, PDF generation and history | Scope isolation; source-grounded claims or abstention; reports reconstructible from actual stored evidence |
 | 9 - Integration, security and performance | Complete journeys, unsafe inputs, authorization, resilience, measurements and offline verification | At least three varied unseen datasets including classification/regression; no known cross-user exposure; failures and measured resource results documented |
 | 10 - Hybrid deployment and final delivery | Hosted static frontend, protected HTTPS API tunnel, runbooks and academic demonstration | Security gates pass; services/artifacts stay private; disconnected state works; local offline demo and final delivery are reproducible |
 
 ## Current phase
 
-Phase 1 Checkpoint A delivered repository foundation and configuration. See [its scope and checks](checkpoint-a.md). The user subsequently authorized completion of all Phase 1 work without intermediate checkpoint gates. Minimal frontend/API scaffolds, locked dependencies, isolated containers, migrations, worker and artifact connectivity, tests and scripts are implemented; see [the verification record](checkpoint-b.md).
+Phases 1–7 are implemented. The foundation and verification records remain in [Checkpoint A](checkpoint-a.md) and [Checkpoint B](checkpoint-b.md). Phases 2–6 provide the authenticated UI, dataset ingestion, immutable cleaning, deterministic analytics and supervised ML. Phase 7 connects the AI Research workspace to locally generated plans, explicit approval, LangGraph/RQ execution and persisted evidence. Phase 8 is the next unstarted phase.
 
-Phase 2 implements all eight frontend interface areas, responsive navigation, local validation and sample interactions, accessible chart alternatives and honest availability states. Development fixtures are explicitly labeled and excluded from production builds. Backend authentication, ingestion, analytics execution, ML, RAG and LangGraph remain outside this phase. Stop after Phase 2 verification; Phase 3 requires user approval.
+Development fixtures remain explicitly labeled and excluded from production builds. Document ingestion, vector retrieval, citations, PDF reports, exhaustive security/performance testing and public deployment remain deferred to Phases 8–10.
 
 ## Cross-phase release rules
 

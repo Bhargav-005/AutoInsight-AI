@@ -178,16 +178,54 @@ export interface Overview {
   reports: number
 }
 
+export interface ResearchStep {
+  id: string
+  step_index: number
+  agent_role: 'understand' | 'clean' | 'analysis' | 'ml' | 'research' | 'knowledge' | 'report'
+  tool_name: string | null
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
+  input_summary: Record<string, unknown>
+  output_summary: Record<string, unknown>
+  started_at: string
+  ended_at: string | null
+}
+export interface ResearchEvidence {
+  id: string
+  step_id: string | null
+  evidence_type: string
+  payload: Record<string, unknown>
+}
+export interface ResearchRun {
+  id: string
+  dataset_id: string
+  dataset_version_id: string
+  question: string
+  status: 'draft' | 'awaiting_approval' | 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'rejected'
+  plan: {
+    rationale?: string
+    limitations?: string[]
+    steps?: { agent_role: ResearchStep['agent_role']; objective: string; tool_name: string; arguments: Record<string, unknown>; expected_evidence: string }[]
+  }
+  approval: { status: 'pending' | 'approved' | 'rejected'; approved_at?: string }
+  revision_count: number
+  steps: ResearchStep[]
+  evidence: ResearchEvidence[]
+  created_at: string
+  failure: string | null
+  cancellation_requested: boolean
+}
+
 export async function api<T>(
   path: string,
   options: {
     method?: 'GET' | 'POST'
     body?: unknown
     signal?: AbortSignal
+    timeoutMs?: number
   } = {},
 ): Promise<T> {
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 8000)
+  const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? 8000)
   const abort = () => controller.abort()
   options.signal?.addEventListener('abort', abort, { once: true })
   if (options.signal?.aborted) controller.abort()
