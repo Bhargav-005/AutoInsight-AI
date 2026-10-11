@@ -17,6 +17,13 @@ class SafeWorker(Worker):
         log_event("job_failed", job_id=job.id, category=category)
 
     def handle_job_failure(self, job, queue, started_job_registry=None, exc_string=""):
+        if job.func_name == "worker.ml_jobs.train_model":
+            from worker.ml_jobs import mark_failed
+
+            try:
+                mark_failed(*job.args)
+            except Exception:
+                log_event("ml_status_update_failed", job_id=job.id)
         # Preserve RQ failure results/retries, but never persist raw exception text.
         return super().handle_job_failure(
             job,

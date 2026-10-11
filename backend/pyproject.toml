@@ -8,6 +8,7 @@ dependencies = [
     "argon2-cffi>=25.1,<26",
     "email-validator>=2.3,<3",
     "fastapi>=0.143,<1",
+    "joblib>=1.5,<2",
     "numpy>=2,<3",
     "openpyxl>=3.1,<4",
     "pandas>=2.2,<4",
@@ -18,6 +19,7 @@ dependencies = [
     "python-multipart>=0.0.20,<1",
     "redis>=6,<8",
     "rq>=2.6,<3",
+    "scikit-learn>=1.7,<2",
     "sqlalchemy>=2.0,<3",
     "uvicorn>=0.38,<1",
 ]

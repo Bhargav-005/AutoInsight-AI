@@ -52,10 +52,13 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD:?Run setup first}
       RQ_QUEUE: autoinsight
       FILE_STORAGE_ROOT: /app/storage/artifacts
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
     volumes:
       - ../storage/artifacts:/app/storage/artifacts
     networks: [services]
-    mem_limit: 512m
+    mem_limit: 1g
     cpus: 1.0
     init: true
     depends_on:

@@ -5,6 +5,6 @@ export function isDatasetId(value: string | undefined): value is string {
 }
 
 export function datasetIdFromPath(pathname: string): string | null {
-  const match = pathname.match(/^\/(?:datasets|analysis)\/([^/]+)(?:\/clean)?$/)
+  const match = pathname.match(/^\/(?:datasets|analysis|models)\/([^/]+)(?:\/clean)?$/)
   return match && isDatasetId(match[1]) ? match[1] : null
 }

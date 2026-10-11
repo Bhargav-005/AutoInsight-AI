@@ -138,7 +138,7 @@ export default function Shell() {
         if (!controller.signal.aborted) setDatasetsLoaded(true)
       })
     return () => controller.abort()
-  }, [userId])
+  }, [userId, location.pathname])
 
   useEffect(() => {
     if (!datasetsLoaded) return
@@ -170,13 +170,14 @@ export default function Shell() {
     setSelectedDatasetId(next)
     saveSelectedDatasetId(next)
     if (!next) {
-      if (location.pathname.includes('/clean') || location.pathname.startsWith('/analysis/')) {
+      if (location.pathname.includes('/clean') || location.pathname.startsWith('/analysis/') || location.pathname.startsWith('/models/')) {
         navigate('/datasets')
       }
       return
     }
     if (location.pathname.includes('/clean')) navigate(`/datasets/${next}/clean`)
     else if (location.pathname.startsWith('/analysis/')) navigate(`/analysis/${next}`)
+    else if (location.pathname.startsWith('/models/')) navigate(`/models/${next}`)
     else if (/^\/datasets\/[^/]+$/.test(location.pathname)) navigate(`/datasets/${next}`)
   }
 
@@ -186,6 +187,9 @@ export default function Shell() {
     }
     if (label === 'Analytics') {
       return activeDatasetId ? `/analysis/${activeDatasetId}` : '/datasets'
+    }
+    if (label === 'ML Studio') {
+      return activeDatasetId ? `/models/${activeDatasetId}` : '/models/preview'
     }
     return fallback
   }

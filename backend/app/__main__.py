@@ -13,4 +13,7 @@ if __name__ == "__main__":
         port=settings.api_port,
         access_log=False,
         proxy_headers=False,
+        reload=settings.app_env == "development",
+        reload_dirs=[str(__import__("pathlib").Path(__file__).resolve().parent)]
+        if settings.app_env == "development" else None,
     )

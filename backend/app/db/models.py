@@ -242,12 +242,19 @@ class MLRun(Identity, Created, Owned, Base):
     status: Mapped[str] = mapped_column(Text)
     config_json: Mapped[dict] = mapped_column(JSONB)
     model_artifact_id: Mapped[UUID | None]
+    job_id: Mapped[str | None] = mapped_column(String(120), unique=True)
+    attempt_count: Mapped[int] = mapped_column(Integer, server_default="0")
+    result_json: Mapped[dict | None] = mapped_column(JSONB)
+    error_message: Mapped[str | None] = mapped_column(Text)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     __table_args__ = owned(
         parent("dataset_version_id", "dataset_versions"),
         parent("research_run_id", "research_runs"),
         parent("model_artifact_id", "stored_artifacts"),
         choices("task_type", "classification regression"),
-        choices("status", "queued training evaluating completed failed cancelled"),
+        choices("status", "created queued running training evaluating completed failed cancelled"),
+        CheckConstraint("attempt_count >= 0", name="nonnegative_attempt_count"),
     )
 
 

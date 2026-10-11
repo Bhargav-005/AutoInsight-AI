@@ -240,7 +240,7 @@ export default function Datasets() {
                   </div>
                   <Badge tone={statusTone(item.status)}>{item.status}</Badge>
                   <div className="dataset-list-actions">
-                    {item.status === 'ready' && <Link className="button secondary" to={`/datasets/${item.id}/clean`}>Open Cleaning Studio</Link>}
+                    {item.status === 'ready' && <><Link className="button secondary" to={`/datasets/${item.id}/clean`}>Open Cleaning Studio</Link><Link className="button secondary" to={`/models/${item.id}`}>Open ML Studio</Link></>}
                     <Link className="dataset-open-link" to={`/datasets/${item.id}`} aria-label={`Open ${item.display_name} details`}><ArrowRight size={18} aria-hidden="true" /> Details</Link>
                   </div>
                 </div>
@@ -290,7 +290,7 @@ export default function Datasets() {
         eyebrow="DATA FOUNDATION"
         title={detail?.display_name ?? 'Dataset workspace'}
         description={detail?.original_filename ?? 'Loading your dataset metadata.'}
-        actions={<div className="header-actions"><Link className="button secondary" to="/datasets"><ArrowLeft size={16} /> All datasets</Link>{detail?.status === 'ready' && <Link className="button" to={`/datasets/${detail.id}/clean`}>Open Cleaning Studio</Link>}</div>}
+        actions={<div className="header-actions"><Link className="button secondary" to="/datasets"><ArrowLeft size={16} /> All datasets</Link>{detail?.status === 'ready' && <><Link className="button" to={`/datasets/${detail.id}/clean`}>Open Cleaning Studio</Link><Link className="button secondary" to={`/models/${detail.id}`}>Open ML Studio</Link></>}</div>}
       />
       {error && <div role="alert"><Notice>{error}</Notice></div>}
       {loading && !detail && <ResourceFeedback state={{ kind: 'loading' }} />}

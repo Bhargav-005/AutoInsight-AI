@@ -2,9 +2,9 @@
 
 AutoInsight AI is an explainable, local-first platform for tabular data analysis and supervised machine learning. The planned workflow connects dataset profiling, approved cleaning, deterministic analytics, controlled ML experiments, evidence-backed AI research and downloadable reports.
 
-**Current delivery: Phase 5 — immutable cleaning and deterministic analytics.** Authenticated users can upload and profile CSV/XLSX files, preview allowlisted cleaning plans, approve background jobs that create linked immutable versions, compare version profiles, and run descriptive, grouped, correlation and chart-ready analysis over real stored rows. Every dataset/version lookup is owner-scoped.
+**Current delivery: Phase 6 — real supervised machine learning.** Authenticated users can upload, profile, clean and analyze immutable dataset versions, then train Logistic Regression, Random Forest Classifier, Ridge or Random Forest Regressor in the Linux RQ worker. ML Studio shows held-out metrics, dummy baselines, explanations, compatible experiment comparisons and predictions from verified saved pipelines. Every dataset, experiment and prediction lookup is owner-scoped.
 
-ML, agents, RAG and reporting execution remain in later phases. Analytics is deterministic over bounded full versions; category and chart outputs are capped and results state their source and method. Profiles mark high-cardinality distinct counts and large-column medians as estimates. Registration requires a display name, valid email and 12–128 character password. No demo credentials are seeded.
+Agents, RAG and reporting execution remain in later phases. Analytics is deterministic over bounded full versions; category and chart outputs are capped and results state their source and method. Profiles mark high-cardinality distinct counts and large-column medians as estimates. Registration requires a display name, valid email and 12–128 character password. No demo credentials are seeded.
 
 For normal development, start the infrastructure, migrate, and run the API and frontend as below. Open **Get Started** on the landing page. Visual sample controls are disabled by default; an explicit development-only `VITE_ENABLE_VISUAL_SAMPLES=true` enables labeled fixtures **after real sign-in**, solely for UI regression testing. They never establish authentication or bypass API authorization and are excluded from production builds.
 
@@ -91,4 +91,14 @@ See [Windows development](docs/development-windows.md) for configuration and tes
 - Require approval for persistent cleaning operations.
 - Use only allowlisted analytical tools; no generated Python or arbitrary shell/SQL execution.
 - Test each phase and report failures and limitations honestly.
-- Do not commit, push, advance to Phase 6 or configure public access without the required user approval.
+- Do not commit, push, advance to Phase 7 or configure public access without the required user approval.
+
+## Phase 6 ML development
+
+Sync new dependencies with `uv sync --locked --project backend`, apply `scripts\Invoke-Migrations.ps1`, then rebuild only the worker: `docker compose --env-file .env -f infra/compose.yaml up -d --build --no-deps worker`. Restart the API after updating code.
+
+Open a ready dataset in ML Studio, choose a raw or cleaned version and explicit target, select the task and features, confirm independent rows, then start training. Status is queued/running/completed/failed, with no estimated progress percentage. Saved results include the exact version, checksum, split fingerprint, seed, configuration and library versions. Preprocessing is fitted only on training rows. Compare only experiments with the same source, target, task and split. Predictions reload a server-generated, owner-scoped, checksum-verified joblib pipeline; external serialized models are never accepted. Prediction history stores outputs but not raw input values.
+
+Limits: 50–50,000 labeled rows (source at most 50,000), at least 30 train/10 test rows, 30 features, 1,000,000 selected feature cells, 100 categorical values per feature, 2–20 classes with at least five examples per class. Dates, free text, grouped and time-series evaluation are unsupported. Constant-only features and invalid targets are rejected. The single one-CPU worker has a 1 GiB memory limit; training attempts time out after at most 600 seconds. At most four ML jobs are admitted globally/two per user; failed runs can retry up to three attempts. Serialized models are capped at 100 MB. Hard-interrupted job status is reconciled on subsequent experiment reads.
+
+Focused checks: `uv run --project backend pytest backend/tests/test_ml.py`, and from `backend`, `uv run pytest tests/test_ml_api.py -m integration`. From `frontend`, run `npm.cmd run test:e2e -- e2e/phase6.spec.ts --project=desktop`, `npm.cmd run typecheck`, `npm.cmd run lint` and `npm.cmd run build`. Integration tests create isolated synthetic users/datasets and leave them in local storage for persistence verification. Comprehensive regression and performance testing remains Phase 9 work.

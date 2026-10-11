@@ -55,7 +55,7 @@ def test_postgres_extensions_and_migrations(infra):
             )
             assert (
                 connection.execute(text("SELECT version_num FROM alembic_version")).scalar()
-                == "0002_domain_auth"
+                == "0005_ml_engine"
             )
             assert set(
                 connection.execute(

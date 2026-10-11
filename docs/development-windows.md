@@ -93,7 +93,7 @@ git check-attr text eol -- README.md .env.example scripts/example.ps1
 
 The backend constructs an escaped SQLAlchemy URL and authenticated Redis connection from component settings. The legacy URL keys in the template remain reserved and are not consumed. Containers use `postgres:5432` and `redis:6379`; Windows uses the selected localhost host ports. No secret may appear in frontend build variables or logs. The API uses the restricted `autoinsight_app` role; migrations retain the dedicated AutoInsight owner account. Authentication rate limits are 5 registration and 10 login attempts per minute by default. Browser tests use an isolated key namespace and higher test-only limits.
 
-The upload limit is defined in bytes: 25,000,000 (25 decimal MB). Profiling jobs have a 180-second timeout and run in the worker's 512 MB, one-CPU container. Row and column caps are 100,000 and 100. The initial general job timeout of 900 seconds is a configurable engineering default, not a benchmark result.
+The upload limit is defined in bytes: 25,000,000 (25 decimal MB). Profiling jobs have a 180-second timeout and run in the worker's 1 GiB, one-CPU container (shared with bounded Phase 6 ML jobs). Row and column caps are 100,000 and 100. The initial general job timeout of 900 seconds is a configurable engineering default, not a benchmark result.
 
 ## Git and line endings
 

@@ -17,7 +17,7 @@ def inspect_dependencies(engine, redis, settings) -> dict[str, dict[str, str]]:
             connection.execute(text("SELECT 1"))
             extensions = set(connection.execute(text("SELECT extname FROM pg_extension")).scalars())
             revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar()
-            if not {"vector", "pgcrypto", "citext"} <= extensions or revision != "0002_domain_auth":
+            if not {"vector", "pgcrypto", "citext"} <= extensions or revision != "0005_ml_engine":
                 raise RuntimeError("Migrations required")
         checks["postgres"] = {"status": "healthy", "message": "Connection and extensions verified."}
     except Exception:

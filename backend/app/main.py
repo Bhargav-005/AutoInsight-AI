@@ -13,6 +13,7 @@ from starlette.exceptions import HTTPException
 from app.api.auth import router as auth_router
 from app.api.datasets import router as datasets_router
 from app.api.health import router
+from app.api.ml import router as ml_router
 from app.api.phase5 import router as phase5_router
 from app.core.config import Settings
 from app.core.errors import AppError, app_error, error_response, http_error, validation_error
@@ -58,6 +59,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(auth_router)
     app.include_router(datasets_router)
     app.include_router(phase5_router)
+    app.include_router(ml_router)
     app.add_exception_handler(AppError, app_error)
     app.add_exception_handler(HTTPException, http_error)
     app.add_exception_handler(RequestValidationError, validation_error)
@@ -76,15 +78,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request.state.request_id = str(uuid4())
         start = perf_counter()
         try:
-            if request.url.path.startswith("/api/v1/auth/") and request.method == "POST":
+            is_auth = request.url.path.startswith("/api/v1/auth/")
+            is_ml = request.url.path.startswith("/api/v1/ml-runs")
+            if (is_auth or is_ml) and request.method == "POST":
+                body_limit = 8192 if is_auth else 65536
                 body = bytearray()
                 async for chunk in request.stream():
-                    if len(body) + len(chunk) > 8192:
+                    if len(body) + len(chunk) > body_limit:
                         response = error_response(
                             request,
                             413,
                             "REQUEST_TOO_LARGE",
-                            "Authentication request is too large.",
+                            "Authentication request is too large."
+                            if is_auth
+                            else "ML request is too large.",
                         )
                         break
                     body.extend(chunk)

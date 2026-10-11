@@ -40,8 +40,9 @@ def provision_role(settings):
             cursor.execute("GRANT SELECT ON ALL TABLES IN SCHEMA public TO autoinsight_app")
             cursor.execute(
                 "GRANT INSERT, UPDATE ON users, sessions, datasets, stored_artifacts, "
-                "dataset_versions, dataset_profiles, cleaning_plans TO autoinsight_app"
+                "dataset_versions, dataset_profiles, cleaning_plans, ml_runs TO autoinsight_app"
             )
+            cursor.execute("GRANT INSERT ON model_metrics, predictions TO autoinsight_app")
             cursor.execute("GRANT INSERT ON audit_events TO autoinsight_app")
     finally:
         engine.dispose()
