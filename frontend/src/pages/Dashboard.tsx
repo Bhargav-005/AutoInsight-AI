@@ -1,3 +1,6 @@
+import { useEffect, useState } from 'react'
+import { api, type Overview } from '../api/client'
+import { useSession } from '../app/session'
 import { Link } from 'react-router'
 import {
   ArrowRight,
@@ -14,12 +17,32 @@ import { Badge, Empty, PageHeader, Panel, Stat } from '../components/ui'
 
 export default function Dashboard() {
   const { fixture } = usePreview()
+  const { user } = useSession()
+  const [overview, setOverview] = useState<Overview | null>(null)
+  const [error, setError] = useState('')
+  const [retry, setRetry] = useState(0)
+  useEffect(() => {
+    if (fixture) return
+    let active = true
+    const controller = new AbortController()
+    api<Overview>('/dashboard/overview', { signal: controller.signal })
+      .then((data) => {
+        if (active) setOverview(data)
+      })
+      .catch((reason) => {
+        if (active) setError(reason.message)
+      })
+    return () => {
+      active = false
+      controller.abort()
+    }
+  }, [fixture, retry])
   return (
     <>
       <PageHeader
         eyebrow="YOUR ANALYTICAL WORKSPACE"
         title="A clearer view starts here."
-        description="Bring your data, questions and evidence into one considered workflow."
+        description={`Welcome, ${user?.display_name ?? 'analyst'}. Bring your data, questions and evidence into one considered workflow.`}
         actions={
           <Link className="button" to="/datasets">
             <Plus size={17} />
@@ -27,30 +50,68 @@ export default function Dashboard() {
           </Link>
         }
       />
+      {!fixture && error && (
+        <div className="notice" role="alert">
+          {error} Account statistics are unavailable.
+          <button
+            className="text-button"
+            onClick={() => {
+              setError('')
+              setOverview(null)
+              setRetry(retry + 1)
+            }}
+          >
+            Retry overview
+          </button>
+        </div>
+      )}
+      {!fixture && !overview && !error && (
+        <p role="status">Loading your account statistics…</p>
+      )}
       <div className="stats-grid">
         <Stat
           label="Datasets"
-          value={fixture ? '01' : '—'}
+          value={
+            fixture
+              ? '01'
+              : overview && !error
+                ? String(overview.datasets)
+                : '—'
+          }
           detail={
-            fixture ? 'Synthetic retail sample' : 'Data service not connected'
+            fixture
+              ? 'Synthetic retail sample'
+              : overview && !error
+                ? 'Datasets owned by your account'
+                : 'Waiting for account data'
           }
           icon={<Database size={19} />}
         />
         <Stat
           label="Research runs"
-          value="—"
+          value={
+            overview && !error && !fixture
+              ? String(overview.research_runs)
+              : '—'
+          }
           detail="Investigations connect in Phase 7"
           icon={<Network size={19} />}
         />
         <Stat
           label="ML experiments"
-          value="—"
+          value={
+            overview && !error && !fixture
+              ? String(overview.ml_experiments)
+              : '—'
+          }
           detail="Training connects in Phase 6"
           icon={<FlaskConical size={19} />}
         />
         <Stat
           label="Evidence reports"
-          value="—"
+          value={
+            overview && !error && !fixture ? String(overview.reports) : '—'
+          }
           detail="Reporting connects in Phase 8"
           icon={<FileCheck2 size={19} />}
         />
@@ -94,8 +155,8 @@ export default function Dashboard() {
                 </Link>
               }
             >
-              Your datasets will appear here once ingestion is connected. For
-              now, explore the interface with a clearly labeled sample.
+              Dataset ingestion arrives in Phase 4. Your account statistics
+              above come from your own database records.
             </Empty>
           )}
           <div className="panel-bottom">
@@ -141,7 +202,7 @@ export default function Dashboard() {
           <div className="quiet-row">
             <Workflow size={23} />
             <div>
-              <h3>No connected activity feed</h3>
+              <h3>Activity workflows are not connected yet</h3>
               <p>
                 Real jobs and their outcomes will appear here. Nothing is
                 currently submitted by this interface.

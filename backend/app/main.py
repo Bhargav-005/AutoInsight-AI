@@ -7,11 +7,13 @@ from uuid import uuid4
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.exc import SQLAlchemyError
 from starlette.exceptions import HTTPException
 
+from app.api.auth import router as auth_router
 from app.api.health import router
 from app.core.config import Settings
-from app.core.errors import error_response, http_error, validation_error
+from app.core.errors import AppError, app_error, error_response, http_error, validation_error
 from app.core.logging import configure_logging, log_event
 from app.db.session import create_db_engine
 from worker.connection import redis_connection
@@ -24,7 +26,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app):
         app.state.settings = settings
-        app.state.engine = create_db_engine(settings) if settings.infrastructure_enabled else None
+        app.state.engine = (
+            create_db_engine(settings, runtime=True) if settings.infrastructure_enabled else None
+        )
         app.state.redis = redis_connection(settings) if settings.infrastructure_enabled else None
         yield
         if app.state.engine is not None:
@@ -35,7 +39,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(
         title="AutoInsight AI",
         version="0.1.0",
-        description="Phase 1: local foundation with measured infrastructure readiness.",
+        description="Local analytics foundation with database-backed account sessions.",
         lifespan=lifespan,
         docs_url="/api/v1/docs",
         redoc_url=None,
@@ -44,26 +48,56 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
-        allow_credentials=False,
-        allow_methods=["GET"],
-        allow_headers=["Accept"],
+        allow_credentials=True,
+        allow_methods=["GET", "POST"],
+        allow_headers=["Accept", "Content-Type", "X-CSRF-Token"],
     )
     app.include_router(router)
+    app.include_router(auth_router)
+    app.add_exception_handler(AppError, app_error)
     app.add_exception_handler(HTTPException, http_error)
     app.add_exception_handler(RequestValidationError, validation_error)
+
+    @app.exception_handler(SQLAlchemyError)
+    async def database_error(request, exc):
+        return error_response(
+            request,
+            503,
+            "DATABASE_UNAVAILABLE",
+            "Account data is temporarily unavailable. Please try again.",
+        )
 
     @app.middleware("http")
     async def request_context(request: Request, call_next):
         request.state.request_id = str(uuid4())
         start = perf_counter()
         try:
-            response = await call_next(request)
+            if request.url.path.startswith("/api/v1/auth/") and request.method == "POST":
+                body = bytearray()
+                async for chunk in request.stream():
+                    if len(body) + len(chunk) > 8192:
+                        response = error_response(
+                            request,
+                            413,
+                            "REQUEST_TOO_LARGE",
+                            "Authentication request is too large.",
+                        )
+                        break
+                    body.extend(chunk)
+                else:
+                    # Starlette's cached body is replayed for FastAPI's bounded JSON parsing.
+                    request._body = bytes(body)
+                    response = await call_next(request)
+            else:
+                response = await call_next(request)
         except Exception as exc:
             log_event(
                 "request_failed", request_id=request.state.request_id, category=type(exc).__name__
             )
             response = error_response(request, 500, "INTERNAL_ERROR", "An internal error occurred")
         response.headers["X-Request-ID"] = request.state.request_id
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["X-Content-Type-Options"] = "nosniff"
         log_event(
             "request",
             request_id=request.state.request_id,

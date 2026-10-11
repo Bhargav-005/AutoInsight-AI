@@ -422,14 +422,8 @@ export default function Landing() {
                 Sign In <ArrowRight size={17} />
               </Link>
             </div>
-            {import.meta.env.DEV && (
-              <Link className="lp-preview-link" to="/dashboard">
-                Explore Platform <ArrowRight size={15} />
-                <span>Development preview</span>
-              </Link>
-            )}
             <p className="lp-availability">
-              Frontend available to explore. Data processing, authentication and
+              Create an account to explore your workspace. Data processing and
               AI execution are in development.
             </p>
           </div>
@@ -809,7 +803,7 @@ export default function Landing() {
             <p>
               Explore the registration interface.
               <br />
-              Account creation connects in Phase 3.
+              Create an account on your local backend.
             </p>
           </div>
         </section>

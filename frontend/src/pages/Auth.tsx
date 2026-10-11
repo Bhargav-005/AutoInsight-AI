@@ -1,42 +1,76 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { Link } from 'react-router'
+import { Link, useLocation, useNavigate } from 'react-router'
+import { useSession, safeDestination } from '../app/session'
+import { ApiError } from '../api/client'
 import { ArrowRight, BarChart3, Eye, EyeOff, LockKeyhole } from 'lucide-react'
 
 export default function Auth({ register = false }: { register?: boolean }) {
   useEffect(() => {
     document.title = `${register ? 'Create account' : 'Sign in'} · AutoInsight AI`
   }, [register])
+  const session = useSession()
+  const location = useLocation()
+  const navigate = useNavigate()
+  const [pending, setPending] = useState(false)
+  const destination = safeDestination(location.state?.from)
+  useEffect(() => {
+    if (session.status === 'authenticated')
+      navigate(destination, { replace: true })
+  }, [session.status, destination, navigate])
   const [visible, setVisible] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [message, setMessage] = useState('')
-  function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    const data = new FormData(event.currentTarget)
-    const email = String(data.get('email') ?? '')
+    if (pending) return
+    const form = event.currentTarget
+    const data = new FormData(form)
+    const email = String(data.get('email') ?? '').trim()
     const password = String(data.get('password') ?? '')
+    const display_name = String(data.get('display_name') ?? '').trim()
     const next: Record<string, string> = {}
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+    if (register && (!display_name || display_name.length > 80))
+      next.display_name = 'Enter a display name of up to 80 characters.'
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254)
       next.email = 'Enter a valid email address.'
-    if (password.length < 8) next.password = 'Use at least 8 characters.'
+    if (
+      Array.from(password).length < (register ? 12 : 1) ||
+      Array.from(password).length > 128
+    )
+      next.password = register
+        ? 'Use between 12 and 128 characters.'
+        : 'Enter your password (up to 128 characters).'
     if (register && password !== data.get('confirm'))
       next.confirm = 'Passwords must match.'
     setErrors(next)
-    setMessage(
-      Object.keys(next).length
-        ? ''
-        : 'Authentication is not connected yet (Phase 3). No credentials were sent and no session was created.',
-    )
-    if (Object.keys(next).length)
-      (
-        event.currentTarget.elements.namedItem(
-          Object.keys(next)[0],
-        ) as HTMLElement
-      )?.focus()
+    setMessage('')
+    if (Object.keys(next).length) {
+      ;(form.elements.namedItem(Object.keys(next)[0]) as HTMLElement)?.focus()
+      return
+    }
+    setPending(true)
+    try {
+      await session.authenticate(register, {
+        email,
+        password,
+        ...(register ? { display_name } : {}),
+      })
+      form.reset()
+      navigate(destination, { replace: true })
+    } catch (error) {
+      setMessage(
+        error instanceof ApiError && error.status === 422
+          ? 'Check your email, display name and password length, then try again.'
+          : (error as Error).message,
+      )
+    } finally {
+      setPending(false)
+    }
   }
   return (
     <main className="auth-layout">
       <section className="auth-story">
-        <Link to="/login" className="brand">
+        <Link to="/" className="brand">
           <span className="brand-mark">
             <BarChart3 size={22} />
           </span>
@@ -95,14 +129,40 @@ export default function Auth({ register = false }: { register?: boolean }) {
       </section>
       <section className="auth-form-side">
         <div className="auth-form-wrap">
-          <span className="badge copper">FRONTEND PREVIEW</span>
+          <span className="badge copper">YOUR LOCAL WORKSPACE</span>
           <h2>{register ? 'Create your workspace' : 'Welcome back.'}</h2>
           <p>
             {register
               ? 'A thoughtful place to explore your data.'
               : 'Your next insight starts with a question.'}
           </p>
-          <form noValidate onSubmit={submit}>
+          {(location.state?.expired || session.status === 'expired') && (
+            <p className="notice" role="alert">
+              Your session expired. Please sign in again.
+            </p>
+          )}
+          <form noValidate onSubmit={submit} aria-busy={pending}>
+            {register && (
+              <>
+                <label>
+                  Display name
+                  <input
+                    name="display_name"
+                    autoComplete="name"
+                    maxLength={80}
+                    aria-invalid={!!errors.display_name}
+                    aria-describedby={
+                      errors.display_name ? 'name-error' : undefined
+                    }
+                  />
+                </label>
+                {errors.display_name && (
+                  <p className="field-error" id="name-error" role="alert">
+                    {errors.display_name}
+                  </p>
+                )}
+              </>
+            )}
             <label>
               Email address
               <input
@@ -126,7 +186,7 @@ export default function Auth({ register = false }: { register?: boolean }) {
                   name="password"
                   type={visible ? 'text' : 'password'}
                   autoComplete={register ? 'new-password' : 'current-password'}
-                  placeholder="At least 8 characters"
+                  placeholder={register ? '12–128 characters' : 'Your password'}
                   aria-invalid={!!errors.password}
                   aria-describedby={
                     errors.password ? 'password-error' : undefined
@@ -168,36 +228,38 @@ export default function Auth({ register = false }: { register?: boolean }) {
                 )}
               </>
             )}
-            <button className="button auth-submit" type="submit">
-              {register ? 'Create account' : 'Sign in'}
+            <button
+              className="button auth-submit"
+              type="submit"
+              disabled={pending}
+            >
+              {pending
+                ? 'Please wait…'
+                : register
+                  ? 'Create account'
+                  : 'Sign in'}
               <ArrowRight size={17} />
             </button>
             {message && (
-              <p className="notice" role="status">
+              <p className="notice" role="alert">
                 {message}
               </p>
             )}
           </form>
           <p className="auth-service">
             <LockKeyhole size={15} />
-            Authentication connects in Phase 3. This form validates locally
-            only.
+            Your session is managed by the local API. Passwords are never stored
+            in this browser.
           </p>
           <p className="auth-switch">
             {register ? 'Already have an account?' : 'New to AutoInsight?'}{' '}
-            <Link to={register ? '/login' : '/register'}>
+            <Link
+              to={register ? '/login' : '/register'}
+              state={{ from: destination }}
+            >
               {register ? 'Sign in' : 'Create an account'}
             </Link>
           </p>
-          {import.meta.env.DEV && (
-            <div className="auth-preview">
-              <span>JUST EXPLORING?</span>
-              <Link to="/dashboard">
-                Open frontend preview <ArrowRight size={16} />
-              </Link>
-              <small>No sign-in, saved data or backend actions.</small>
-            </div>
-          )}
         </div>
         <p className="auth-bottom">
           Your data. Your process. Your understanding.

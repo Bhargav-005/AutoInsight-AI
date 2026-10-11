@@ -8,6 +8,8 @@ from rq import Retry
 from sqlalchemy import text
 
 from app.core.config import PROJECT_ROOT, Settings
+from app.db import models  # noqa: F401
+from app.db.base import Base
 from app.db.session import create_db_engine
 from app.main import create_app
 from app.storage.paths import ArtifactStore
@@ -53,13 +55,13 @@ def test_postgres_extensions_and_migrations(infra):
             )
             assert (
                 connection.execute(text("SELECT version_num FROM alembic_version")).scalar()
-                == "0001_extensions"
+                == "0002_domain_auth"
             )
             assert set(
                 connection.execute(
                     text("SELECT tablename FROM pg_tables WHERE schemaname='public'")
                 ).scalars()
-            ) == {"alembic_version"}
+            ) == {"alembic_version", *Base.metadata.tables}
     finally:
         engine.dispose()
 

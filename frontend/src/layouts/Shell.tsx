@@ -18,6 +18,7 @@ import {
   X,
 } from 'lucide-react'
 import { usePreview } from '../app/preview'
+import { useSession } from '../app/session'
 import { Badge, Dialog } from '../components/ui'
 
 const navigation = [
@@ -35,6 +36,22 @@ const navigation = [
 ]
 
 export default function Shell() {
+  const session = useSession()
+  const [signingOut, setSigningOut] = useState(false)
+  const [logoutError, setLogoutError] = useState('')
+  async function signOut() {
+    setSigningOut(true)
+    setLogoutError('')
+    try {
+      await session.logout()
+      setAccount(false)
+      navigate('/login', { replace: true })
+    } catch (error) {
+      setLogoutError((error as Error).message)
+    } finally {
+      setSigningOut(false)
+    }
+  }
   const [collapsed, setCollapsed] = useState(false)
   const [mobile, setMobile] = useState(false)
   const [account, setAccount] = useState(false)
@@ -200,7 +217,11 @@ export default function Shell() {
                 </select>
               </label>
             )}
-            <Link to="/status" className="system-link" aria-label="Service status">
+            <Link
+              to="/status"
+              className="system-link"
+              aria-label="Service status"
+            >
               <Activity size={16} />
               <span>Service status</span>
             </Link>
@@ -216,23 +237,37 @@ export default function Shell() {
         <div className="preview-banner">
           <div>
             <span className="preview-dot" />
-            <strong>Interface preview</strong>
+            <strong>
+              {fixture
+                ? 'Interface preview'
+                : session.user
+                  ? session.user.display_name
+                  : 'Public diagnostics'}
+            </strong>
             <span className="preview-description">
               {fixture
                 ? 'Synthetic sample data. Nothing is saved or executed.'
-                : 'Not signed in. Data services connect in later phases.'}
+                : session.user
+                  ? 'Signed in. Data processing connects in later phases.'
+                  : 'Sign in to access your workspace.'}
             </span>
           </div>
-          {import.meta.env.DEV && (
-            <button className="text-button" disabled={loading} onClick={toggle}>
-              {loading
-                ? 'Loading sample…'
-                : fixture
-                  ? 'Leave sample workspace'
-                  : 'Explore sample workspace'}
-              <ArrowUpRight size={14} />
-            </button>
-          )}
+          {session.user &&
+            import.meta.env.DEV &&
+            import.meta.env.VITE_ENABLE_VISUAL_SAMPLES === 'true' && (
+              <button
+                className="text-button"
+                disabled={loading}
+                onClick={toggle}
+              >
+                {loading
+                  ? 'Loading sample…'
+                  : fixture
+                    ? 'Leave sample workspace'
+                    : 'Explore sample workspace'}
+                <ArrowUpRight size={14} />
+              </button>
+            )}
         </div>
         <main className="page-content" id="main-content" tabIndex={-1}>
           <Outlet />
@@ -243,7 +278,7 @@ export default function Shell() {
             design.
           </span>
           <span>
-            Frontend preview <Badge>Phase 2</Badge>
+            Account foundation <Badge>Phase 3</Badge>
           </span>
         </footer>
       </div>
@@ -254,18 +289,37 @@ export default function Shell() {
       >
         <div className="dialog-body">
           <UserRound size={32} />
-          <h3>You are viewing a frontend preview.</h3>
-          <p>
-            No account or authenticated session has been created. Authentication
-            will connect in Phase 3.
-          </p>
-          <Link
-            className="button"
-            to="/login"
-            onClick={() => setAccount(false)}
-          >
-            View sign-in interface
-          </Link>
+          <h3>{session.user?.display_name ?? 'You are not signed in.'}</h3>
+          {session.user ? (
+            <>
+              <p>{session.user.email}</p>
+              <p>
+                Account created{' '}
+                {new Date(session.user.created_at).toLocaleDateString()}. Your
+                session is managed by the local API.
+              </p>
+              <button
+                className="button"
+                disabled={signingOut}
+                onClick={() => void signOut()}
+              >
+                {signingOut ? 'Signing out…' : 'Sign out'}
+              </button>
+              {logoutError && (
+                <p role="alert">
+                  {logoutError} Your session has not been confirmed as revoked.
+                </p>
+              )}
+            </>
+          ) : (
+            <Link
+              className="button"
+              to="/login"
+              onClick={() => setAccount(false)}
+            >
+              Sign in
+            </Link>
+          )}
         </div>
       </Dialog>
     </div>

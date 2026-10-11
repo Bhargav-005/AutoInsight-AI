@@ -19,7 +19,7 @@ class Settings(BaseSettings):
         hide_input_in_errors=True,
     )
 
-    app_env: Literal["development", "test"] = "development"
+    app_env: Literal["development", "test", "production"] = "development"
     api_host: Literal["127.0.0.1", "localhost", "::1"] = "127.0.0.1"
     api_port: int = Field(default=8000, ge=1024, le=65535)
     cors_origins: list[str] = ["http://127.0.0.1:5173", "http://localhost:5173"]
@@ -35,9 +35,32 @@ class Settings(BaseSettings):
     rq_queue: str = "autoinsight"
     file_storage_root: Path = PROJECT_ROOT / "storage" / "artifacts"
     max_job_seconds: int = Field(default=900, ge=1, le=900)
+    app_db_password: SecretStr = SecretStr("")
+    auth_csrf_secret: SecretStr = SecretStr("")
+    session_hours: int = Field(default=24, ge=1, le=168)
+    auth_rate_namespace: str = "autoinsight:auth"
+    auth_login_limit: int = Field(default=10, ge=1, le=100)
+    auth_register_limit: int = Field(default=5, ge=1, le=100)
+
+    @property
+    def secure_cookies(self) -> bool:
+        return self.app_env == "production"
+
+    @property
+    def session_cookie(self) -> str:
+        return "__Secure-autoinsight_session" if self.secure_cookies else "autoinsight_session"
+
+    @property
+    def csrf_cookie(self) -> str:
+        return "__Secure-autoinsight_csrf" if self.secure_cookies else "autoinsight_csrf"
 
     @model_validator(mode="after")
     def validate_infrastructure(self):
+        if self.app_env == "production":
+            if len(self.auth_csrf_secret.get_secret_value()) < 32:
+                raise ValueError("Production requires a persistent CSRF secret")
+            if any(not origin.startswith("https://") for origin in self.cors_origins):
+                raise ValueError("Production origins must use HTTPS")
         if self.infrastructure_enabled:
             if any(
                 len(secret.get_secret_value()) < 24

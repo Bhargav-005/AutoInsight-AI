@@ -4,6 +4,18 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException
 
 
+class AppError(Exception):
+    def __init__(self, status: int, code: str, message: str):
+        self.status, self.code, self.message = status, code, message
+
+
+async def app_error(request: Request, exc: AppError):
+    response = error_response(request, exc.status, exc.code, exc.message)
+    if exc.status == 429:
+        response.headers["Retry-After"] = "60"
+    return response
+
+
 def error_response(request: Request, status: int, code: str, message: str) -> JSONResponse:
     return JSONResponse(
         status_code=status,

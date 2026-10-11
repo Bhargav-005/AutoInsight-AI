@@ -9,9 +9,7 @@ export interface Readiness {
 }
 
 export async function fetchReadiness(signal: AbortSignal): Promise<Readiness> {
-  const base = (
-    import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api/v1'
-  ).replace(/\/$/, '')
+  const base = '/api/v1'
   const response = await fetch(`${base}/health/ready`, {
     signal,
     cache: 'no-store',

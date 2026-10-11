@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 
 test('real API status, keyboard access, responsive layout and disconnection', async ({ page }, testInfo) => {
-  const ready = process.env.PHASE1_INFRA_E2E === '1'
+  const ready = true
   const expected = `API connected · Platform ${ready ? 'ready' : 'not ready'}`
   await page.goto('/status')
   await expect(page.getByRole('heading', { name: 'AutoInsight AI' })).toBeVisible()

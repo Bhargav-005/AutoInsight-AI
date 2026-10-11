@@ -8,7 +8,10 @@ test('public entry renders offline, links correctly, and stays free of browser e
   const apiRequests: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
   page.on('console', (message) => {
-    if (message.type() === 'error' || message.type() === 'warning')
+    if (
+      (message.type() === 'error' || message.type() === 'warning') &&
+      !message.text().includes('401')
+    )
       errors.push(message.text())
   })
   await page.route('**/api/v1/**', (route) => {
@@ -23,11 +26,10 @@ test('public entry renders offline, links correctly, and stays free of browser e
     page.getByRole('navigation', { name: 'Main navigation', exact: true }),
   ).toHaveCount(0)
   await expect(
-    page.getByText(
-      /Data processing, authentication and AI execution are in development/,
-    ),
+    page.getByText(/Data processing and AI execution are in development/),
   ).toBeVisible()
   expect(apiRequests).toEqual([])
+  await page.unroute('**/api/v1/**')
   await page
     .getByRole('main')
     .getByRole('link', { name: 'Get Started', exact: true })
@@ -47,9 +49,9 @@ test('public entry renders offline, links correctly, and stays free of browser e
     page.getByRole('heading', { name: 'Welcome back.' }),
   ).toBeVisible()
   await page.goto('/')
-  await page.getByRole('link', { name: /Explore Platform/ }).click()
-  await expect(page).toHaveURL('/dashboard')
-  await expect(page.getByText(/Not signed in/)).toBeVisible()
+  await expect(
+    page.getByRole('link', { name: /Explore Platform/ }),
+  ).toHaveCount(0)
   expect(errors).toEqual([])
 })
 

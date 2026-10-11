@@ -7,7 +7,21 @@ const root = fileURLToPath(new URL('..', import.meta.url))
 
 export default defineConfig(({ mode }) => {
   // Read only the public prefix plus the two explicit local server settings.
-  const env = loadEnv(mode, root, ['VITE_', 'FRONTEND_HOST', 'FRONTEND_PORT'])
+  const env = loadEnv(mode, root, [
+    'VITE_',
+    'FRONTEND_HOST',
+    'FRONTEND_PORT',
+    'API_PROXY_TARGET',
+  ])
+  const target = env.API_PROXY_TARGET || 'http://127.0.0.1:8000'
+  const api = new URL(target)
+  if (
+    !['127.0.0.1', 'localhost', '[::1]'].includes(api.hostname) ||
+    !['http:', 'https:'].includes(api.protocol) ||
+    api.username ||
+    api.password
+  )
+    throw new Error('API proxy must target the local backend.')
   const host = env.FRONTEND_HOST || '127.0.0.1'
   const port = Number(env.FRONTEND_PORT || 5173)
   if (!['127.0.0.1', 'localhost', '::1'].includes(host)) {
@@ -19,7 +33,17 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react()],
     envDir: root,
-    server: { host, port, strictPort: true },
-    test: { environment: 'jsdom', setupFiles: ['./src/test/setup.ts'], include: ['src/**/*.test.{ts,tsx}'] },
+    server: {
+      host,
+      port,
+      strictPort: true,
+      proxy: { '/api/v1': { target, changeOrigin: false } },
+    },
+    preview: { proxy: { '/api/v1': { target, changeOrigin: false } } },
+    test: {
+      environment: 'jsdom',
+      setupFiles: ['./src/test/setup.ts'],
+      include: ['src/**/*.test.{ts,tsx}'],
+    },
   }
 })
