@@ -346,18 +346,50 @@ def test_saved_steps_and_evidence_survive_api_restart(monkeypatch):
                 )
                 db.add(step)
                 db.flush()
-                db.add(
-                    EvidenceItem(
-                        owner_id=user_id,
-                        run_id=run.id,
-                        step_id=step.id,
-                        evidence_type="aggregate",
-                        payload_json={
-                            "tool_name": "run_grouped_aggregate",
-                            "verified": True,
-                            "result": {"findings": [{"claim": "Persisted finding"}]},
-                        },
-                    )
+                db.add_all(
+                    [
+                        EvidenceItem(
+                            owner_id=user_id,
+                            run_id=run.id,
+                            step_id=step.id,
+                            evidence_type="aggregate",
+                            payload_json={
+                                "tool_name": "run_grouped_aggregate",
+                                "arguments": {
+                                    "group_by": ["column_001"],
+                                    "operation": "mean",
+                                    "metric": "column_002",
+                                    "direction": "highest",
+                                },
+                                "verified": True,
+                                "exact": True,
+                                "result": {
+                                    "operation": "mean",
+                                    "grouping": ["column_001"],
+                                    "selected_columns": ["column_001", "column_002"],
+                                    "rows": [
+                                        {"column_001": "North", "value": 200},
+                                        {"column_001": "South", "value": 300},
+                                    ],
+                                    "warnings": [],
+                                },
+                            },
+                        ),
+                        EvidenceItem(
+                            owner_id=user_id,
+                            run_id=run.id,
+                            step_id=step.id,
+                            evidence_type="synthesize_evidence",
+                            payload_json={
+                                "tool_name": "synthesize_evidence",
+                                "result": {
+                                    "interpretation": "Persisted interpretation",
+                                    "findings": [{"claim": "Highest mean for column_002"}],
+                                    "limitations": [],
+                                },
+                            },
+                        ),
+                    ]
                 )
         finally:
             engine.dispose()
@@ -374,9 +406,14 @@ def test_saved_steps_and_evidence_survive_api_restart(monkeypatch):
         state = restored.json()["data"]
         assert state["status"] == "completed"
         assert len(state["steps"]) == 1
-        assert state["evidence"][0]["payload"]["verified"] is True
-        finding = state["evidence"][0]["payload"]["result"]["findings"][0]["claim"]
-        assert finding == "Persisted finding"
+        aggregate = next(item for item in state["evidence"] if item["evidence_type"] == "aggregate")
+        synthesis = next(
+            item for item in state["evidence"] if item["evidence_type"] == "synthesize_evidence"
+        )
+        assert aggregate["payload"]["verified"] is True
+        finding = synthesis["payload"]["result"]["findings"][0]["claim"]
+        assert finding == "South has the highest average profit: 300."
+        assert synthesis["payload"]["result"]["interpretation"] == "Persisted interpretation"
 
 
 def test_stale_running_record_without_an_rq_job_is_reconciled(monkeypatch):

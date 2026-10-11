@@ -25,10 +25,18 @@ from sqlalchemy.orm import Session
 from app.api.auth import DB, CurrentUser, Envelope, result
 from app.core.errors import AppError
 from app.core.security import require_csrf
-from app.db.models import AgentStep, AuditEvent, DatasetVersion, EvidenceItem, ResearchRun
+from app.db.models import (
+    AgentStep,
+    AuditEvent,
+    DatasetProfile,
+    DatasetVersion,
+    EvidenceItem,
+    ResearchRun,
+)
 from app.services.research import (
     build_planning_graph,
     dataset_context,
+    findings_from_verified,
     plan_digest,
 )
 from worker.connection import queue
@@ -134,6 +142,42 @@ def _view(db: Session, run: ResearchRun) -> ResearchView:
         .where(EvidenceItem.run_id == run.id, EvidenceItem.owner_id == run.owner_id)
         .order_by(EvidenceItem.id)
     ).all()
+    profile = db.scalar(
+        select(DatasetProfile).where(DatasetProfile.dataset_version_id == version.id)
+    )
+    profile_json = profile.profile_json if profile is not None else None
+    evidence_views = [
+        EvidenceView(
+            id=item.id,
+            step_id=item.step_id,
+            evidence_type=item.evidence_type,
+            payload=item.payload_json,
+        )
+        for item in evidence
+    ]
+    # Older completed runs keep their original evidence payloads. Refresh only the API
+    # presentation of the synthesis from those same verified records and this version's
+    # persisted schema, leaving the evidence rows untouched.
+    verified_evidence = [
+        {
+            "id": str(item.id),
+            "payload": item.payload_json,
+            "verified": item.payload_json.get("verified") is True,
+        }
+        for item in evidence
+    ]
+    refreshed_findings = findings_from_verified(verified_evidence, profile_json)
+    for evidence_view in evidence_views:
+        if evidence_view.evidence_type != "synthesize_evidence":
+            continue
+        payload = dict(evidence_view.payload)
+        synthesis = payload.get("result")
+        if isinstance(synthesis, dict):
+            payload["result"] = {
+                **synthesis,
+                "findings": refreshed_findings or synthesis.get("findings", []),
+            }
+            evidence_view.payload = payload
     data = run.plan_json or {}
     return ResearchView(
         id=run.id,
@@ -145,15 +189,7 @@ def _view(db: Session, run: ResearchRun) -> ResearchView:
         approval=data.get("approval", {"status": "pending"}),
         revision_count=int(data.get("revision_count", 0)),
         steps=steps,
-        evidence=[
-            EvidenceView(
-                id=item.id,
-                step_id=item.step_id,
-                evidence_type=item.evidence_type,
-                payload=item.payload_json,
-            )
-            for item in evidence
-        ],
+        evidence=evidence_views,
         created_at=run.created_at,
         failure=data.get("failure"),
         cancellation_requested=bool(data.get("cancellation_requested")),

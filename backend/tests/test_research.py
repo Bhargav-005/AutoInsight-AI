@@ -102,7 +102,13 @@ def test_grouped_claim_is_computed_and_requires_verified_evidence():
             "metric": "column_002",
             "direction": "highest",
         },
-        "result": {"rows": rows, "warnings": warnings},
+        "result": {
+            "operation": "mean",
+            "selected_columns": ["column_001", "column_002"],
+            "grouping": ["column_001"],
+            "rows": rows,
+            "warnings": warnings,
+        },
         "exact": True,
     }
     assert (
@@ -112,14 +118,75 @@ def test_grouped_claim_is_computed_and_requires_verified_evidence():
         == []
     )
     claim = research.findings_from_verified(
-        [{"id": "real-evidence", "verified": True, "payload": payload}]
+        [{"id": "real-evidence", "verified": True, "payload": payload}],
+        {
+            "columns": [
+                {"id": "column_001", "name": "Region"},
+                {"id": "column_002", "name": "Profit"},
+            ]
+        },
     )[0]
     assert claim == {
-        "claim": "Highest mean for column_002 is 300.0 in column_001=South",
+        "claim": "South has the highest average Profit: 300.",
         "evidence_id": "real-evidence",
         "value": 300.0,
         "exact": True,
     }
+
+
+def test_aggregate_wording_uses_executed_operation_and_schema_names():
+    profile = {
+        "columns": [
+            {"id": "column_001", "name": "Region"},
+            {"id": "column_002", "name": "Profit"},
+        ]
+    }
+    explanations = []
+    for operation, expected_claim, expected_summary in [
+        (
+            "mean",
+            "South has the highest average Profit: 8,500.",
+            "Calculated the average Profit for each Region group.",
+        ),
+        (
+            "sum",
+            "South has the highest total Profit: 17,000.",
+            "Calculated the total Profit for each Region group.",
+        ),
+    ]:
+        item = {
+            "id": operation,
+            "verified": True,
+            "payload": {
+                "tool_name": "run_grouped_aggregate",
+                # Deliberately disagree with the result: persisted tool output is the source
+                # of truth for the operation that ran.
+                "arguments": {
+                    "group_by": ["column_001"],
+                    "operation": "count" if operation == "mean" else "mean",
+                    "metric": "column_002",
+                    "direction": "highest",
+                },
+                "result": {
+                    "operation": operation,
+                    "grouping": ["column_001"],
+                    "selected_columns": ["column_001", "column_002"],
+                    "rows": [
+                        {"column_001": "North", "value": 1000},
+                        {
+                            "column_001": "South",
+                            "value": 8500 if operation == "mean" else 17000,
+                        },
+                    ],
+                    "warnings": [],
+                },
+                "exact": True,
+            },
+        }
+        finding = research.findings_from_verified([item], profile)[0]
+        assert finding["claim"] == expected_claim
+        explanations.append(research.aggregation_explanation_from_verified([item], profile))
+        assert explanations[-1] == expected_summary
 
 
 def test_ranked_claim_is_suppressed_for_truncated_results():

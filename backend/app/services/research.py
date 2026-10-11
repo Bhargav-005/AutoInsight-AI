@@ -557,8 +557,40 @@ def _safe_result(value: Any) -> Any:
     return json.loads(raw)
 
 
-def findings_from_verified(evidence: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Render claims only from exact, verified tool payloads."""
+AGGREGATION_LABELS = {
+    "mean": "average",
+    "sum": "total",
+    "count": "count",
+    "min": "minimum",
+    "max": "maximum",
+    "median": "median",
+}
+
+
+def _column_name(profile: dict[str, Any] | None, column_id: str) -> str:
+    columns = (profile or {}).get("columns", [])
+    return next(
+        (column.get("name") for column in columns if column.get("id") == column_id), column_id
+    )
+
+
+def _display_value(value: int | float) -> str:
+    if isinstance(value, int) or value.is_integer():
+        return f"{int(value):,}"
+    rendered = repr(value).lower()
+    mantissa, separator, exponent = rendered.partition("e")
+    integer, decimal, fraction = mantissa.partition(".")
+    sign = "-" if integer.startswith("-") else ""
+    digits = integer[1:] if sign else integer
+    grouped = f"{int(digits):,}"
+    suffix = f".{fraction}" if decimal else ""
+    return f"{sign}{grouped}{suffix}{f'e{exponent}' if separator else ''}"
+
+
+def findings_from_verified(
+    evidence: list[dict[str, Any]], profile: dict[str, Any] | None = None
+) -> list[dict[str, Any]]:
+    """Render claims only from exact, verified tool payloads and authorized schema names."""
     findings = []
     for item in evidence:
         if item.get("verified") is not True:
@@ -569,11 +601,21 @@ def findings_from_verified(evidence: list[dict[str, Any]]) -> list[dict[str, Any
         if tool == "run_grouped_aggregate" and isinstance(result, dict):
             rows = result.get("rows", [])
             args = payload.get("arguments", {})
-            operation, metric = args.get("operation"), args.get("metric")
+            # The persisted result records what the tool actually executed. The approved
+            # arguments remain useful for direction, while result metadata is authoritative
+            # for operation and selected columns.
+            operation = result.get("operation")
+            selected_columns = result.get("selected_columns") or []
+            metric = result.get("metric") or (
+                selected_columns[-1]
+                if selected_columns and selected_columns[-1] not in (result.get("grouping") or [])
+                else None
+            )
+            groups = result.get("grouping") or args.get("group_by", [])
             if (
                 not rows
                 or result.get("warnings")
-                or operation not in {"mean", "median", "max", "min", "sum"}
+                or operation not in AGGREGATION_LABELS
             ):
                 continue
             numeric_rows = [row for row in rows if isinstance(row.get("value"), (int, float))]
@@ -582,14 +624,25 @@ def findings_from_verified(evidence: list[dict[str, Any]]) -> list[dict[str, Any
             direction = args.get("direction", "highest")
             choose = max if direction == "highest" else min
             chosen = choose(numeric_rows, key=lambda row: row["value"])
-            groups = args.get("group_by", [])
+            group_names = [_column_name(profile, column) for column in groups]
+            metric_name = _column_name(profile, metric) if metric else None
+            group_value = ", ".join(
+                str(chosen.get(column)) for column in groups
+            )
+            if len(groups) > 1:
+                group_value = ", ".join(
+                    f"{name} {chosen.get(column)}"
+                    for column, name in zip(groups, group_names, strict=True)
+                )
+            operation_label = AGGREGATION_LABELS[operation]
+            if operation == "count":
+                description = "count" if metric_name is None else f"count of {metric_name}"
+            else:
+                description = f"{operation_label} {metric_name or 'value'}"
             findings.append(
                 {
-                    "claim": (
-                        f"{direction.capitalize()} {operation} for {metric} is "
-                        f"{chosen['value']} in "
-                        + ", ".join(f"{column}={chosen.get(column)}" for column in groups)
-                    ),
+                    "claim": f"{group_value} has the {direction} {description}: "
+                    f"{_display_value(chosen['value'])}.",
                     "evidence_id": item["id"],
                     "value": chosen["value"],
                     "exact": bool(payload.get("exact")),
@@ -607,6 +660,47 @@ def findings_from_verified(evidence: list[dict[str, Any]]) -> list[dict[str, Any
                     }
                 )
     return findings
+
+
+def aggregation_explanation_from_verified(
+    evidence: list[dict[str, Any]], profile: dict[str, Any] | None = None
+) -> str | None:
+    """Describe executed grouped operations from verified result metadata."""
+    descriptions = []
+    for item in evidence:
+        if item.get("verified") is not True:
+            continue
+        payload = item.get("payload", {})
+        result = payload.get("result")
+        if payload.get("tool_name") != "run_grouped_aggregate" or not isinstance(result, dict):
+            continue
+        operation = result.get("operation")
+        if operation not in AGGREGATION_LABELS:
+            continue
+        grouping = result.get("grouping") or []
+        group_names = [_column_name(profile, column) for column in grouping]
+        selected_columns = result.get("selected_columns") or []
+        metric = result.get("metric") or (
+            selected_columns[-1]
+            if selected_columns and selected_columns[-1] not in grouping
+            else None
+        )
+        metric_name = _column_name(profile, metric) if metric else None
+        label = AGGREGATION_LABELS[operation]
+        expression = (
+            f"count of {metric_name}"
+            if operation == "count" and metric_name
+            else "count"
+            if operation == "count"
+            else f"{label} {metric_name or 'value'}"
+        )
+        if group_names:
+            descriptions.append(
+                f"Calculated the {expression} for each {', '.join(group_names)} group."
+            )
+        else:
+            descriptions.append(f"Calculated the {expression}.")
+    return " ".join(dict.fromkeys(descriptions)) or None
 
 
 def _execute_tool(db, settings, owner_id, dataset, version, profile, step, prior_evidence):
@@ -737,11 +831,12 @@ def _execute_tool(db, settings, owner_id, dataset, version, profile, step, prior
                 "The computed evidence is available below with exact values and provenance."
             )
         insight.limitations = [text for text in insight.limitations if not re.search(r"\d", text)]
-        findings = findings_from_verified(verified)
+        findings = findings_from_verified(verified, profile)
+        aggregation_explanation = aggregation_explanation_from_verified(verified, profile)
         return {
             "result_type": name,
             "result": {
-                "interpretation": insight.interpretation,
+                "interpretation": aggregation_explanation or insight.interpretation,
                 "findings": findings,
                 "limitations": insight.limitations,
             },
