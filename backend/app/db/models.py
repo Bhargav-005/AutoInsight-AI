@@ -163,14 +163,22 @@ class CleaningPlan(Identity, Created, Owned, Base):
     state: Mapped[str] = mapped_column(Text)
     operations_json: Mapped[list] = mapped_column(JSONB)
     approved_by: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"))
+    preview_json: Mapped[dict | None] = mapped_column(JSONB)
+    job_id: Mapped[str | None] = mapped_column(String(120), unique=True)
+    attempt_count: Mapped[int] = mapped_column(Integer, server_default="0")
+    result_version_id: Mapped[UUID | None]
+    error_message: Mapped[str | None] = mapped_column(Text)
     __table_args__ = owned(
         parent("dataset_version_id", "dataset_versions", delete="CASCADE"),
-        choices("state", "pending approved rejected applied failed"),
+        parent("result_version_id", "dataset_versions", delete="RESTRICT"),
+        UniqueConstraint("result_version_id"),
+        choices("state", "draft previewed approved queued running completed rejected failed"),
         CheckConstraint("approved_by IS NULL OR approved_by = owner_id", name="owner_approval"),
         CheckConstraint(
-            "state NOT IN ('approved','applied') OR approved_by IS NOT NULL",
+            "state NOT IN ('approved','queued','running','completed') OR approved_by IS NOT NULL",
             name="approval_required",
         ),
+        CheckConstraint("attempt_count >= 0", name="nonnegative_attempt_count"),
     )
 
 

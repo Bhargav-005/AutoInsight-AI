@@ -439,10 +439,30 @@ def list_versions(request: Request, dataset_id: UUID, user: CurrentUser, db: DB)
 
 
 @router.get("/{dataset_id}/profile", response_model=Envelope[DatasetProfileView])
-def get_profile(request: Request, dataset_id: UUID, user: CurrentUser, db: DB):
+def get_profile(
+    request: Request,
+    dataset_id: UUID,
+    user: CurrentUser,
+    db: DB,
+    version_id: UUID | None = None,
+):
     dataset = _owned_dataset(db, user.id, dataset_id)
     _ready(dataset)
-    _, profile = _profile(db, dataset)
+    version = db.scalar(
+        select(DatasetVersion)
+        .where(
+            DatasetVersion.dataset_id == dataset.id,
+            DatasetVersion.owner_id == user.id,
+            *([DatasetVersion.id == version_id] if version_id else []),
+        )
+        .order_by(DatasetVersion.version_no.desc())
+        .limit(1)
+    )
+    profile = (
+        db.scalar(select(DatasetProfile).where(DatasetProfile.dataset_version_id == version.id))
+        if version
+        else None
+    )
     if profile is None:
         raise AppError(409, "PROFILE_UNAVAILABLE", "Dataset profile is not available yet.")
     return result(request, profile.profile_json)
@@ -456,10 +476,25 @@ def preview_dataset(
     db: DB,
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
+    version_id: UUID | None = None,
 ):
     dataset = _owned_dataset(db, user.id, dataset_id)
     _ready(dataset)
-    version, profile = _profile(db, dataset)
+    version = db.scalar(
+        select(DatasetVersion)
+        .where(
+            DatasetVersion.dataset_id == dataset.id,
+            DatasetVersion.owner_id == user.id,
+            *([DatasetVersion.id == version_id] if version_id else []),
+        )
+        .order_by(DatasetVersion.version_no.desc())
+        .limit(1)
+    )
+    profile = (
+        db.scalar(select(DatasetProfile).where(DatasetProfile.dataset_version_id == version.id))
+        if version
+        else None
+    )
     artifact = (
         db.scalar(
             select(StoredArtifact).where(
@@ -475,14 +510,16 @@ def preview_dataset(
     path = ArtifactStore(Path(request.app.state.settings.file_storage_root)).resolve(
         artifact.relative_path
     )
+    source_format = "xlsx" if artifact.mime_type.endswith("spreadsheetml.sheet") else "csv"
+    sheet_name = dataset.selected_sheet if version.version_no == 1 else None
     info = inspect_upload(
         path,
-        dataset.source_format,
-        dataset.selected_sheet,
+        source_format,
+        sheet_name,
         request.app.state.settings.max_dataset_columns,
     )
     offset = (page - 1) * page_size
-    rows = _read_preview(path, dataset, info, offset, page_size)
+    rows = _read_preview(path, source_format, sheet_name, info, offset, page_size)
     return result(
         request,
         {
@@ -517,9 +554,11 @@ def _json_value(value):
     return value
 
 
-def _read_preview(path: Path, dataset: Dataset, info: dict, offset: int, limit: int):
+def _read_preview(
+    path: Path, source_format: str, sheet_name: str | None, info: dict, offset: int, limit: int
+):
     names = [f"column_{index + 1:03d}" for index in range(len(info["headers"]))]
-    if dataset.source_format == "csv":
+    if source_format == "csv":
         try:
             chunks = pd.read_csv(
                 path,
@@ -553,7 +592,7 @@ def _read_preview(path: Path, dataset: Dataset, info: dict, offset: int, limit: 
         with path.open("rb") as stream:
             workbook = load_workbook(stream, read_only=True, data_only=False, keep_links=False)
             try:
-                sheet = workbook[dataset.selected_sheet]
+                sheet = workbook[sheet_name]
                 rows = []
                 for row in sheet.iter_rows(
                     min_row=offset + 2, max_row=offset + limit + 1, values_only=False

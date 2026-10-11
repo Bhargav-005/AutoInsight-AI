@@ -2,7 +2,7 @@
 
 ## Current phase
 
-Phase 4 includes real account sessions, CSV/XLSX upload and profiling, alongside the existing frontend, infrastructure and worker. Cleaning, ML, agents, RAG and reports are not implemented. Start Docker Desktop before infrastructure commands.
+Phase 5 includes real account sessions, CSV/XLSX upload and profiling, approved immutable cleaning jobs, and deterministic analytics, alongside the existing frontend, infrastructure and worker. ML, agents, RAG and reports are not implemented. Start Docker Desktop before infrastructure commands.
 
 Use Windows 11, VS Code and PowerShell with `E:\FSI` as the permanent workspace. Ollama model storage stays at `D:\OllamaModels`; no project setup step may relocate it.
 
@@ -22,17 +22,19 @@ Setup uses locked Python dependencies and `npm ci`. It preserves existing settin
 
 ## Tests
 
-Use focused Phase 4 checks during development before running broader regression suites:
+Use focused Phase 5 checks during development before running broader regression suites:
 
 ```powershell
 Set-Location -LiteralPath 'E:\FSI\backend'
 uv run pytest -q tests/test_profiling.py tests/test_storage.py
 uv run pytest -m integration -q tests/test_dataset_api.py
+uv run pytest -q tests/test_phase5_services.py
+uv run pytest -m integration -q tests/test_phase5_api.py
 Set-Location -LiteralPath 'E:\FSI\frontend'
 npm.cmd run typecheck
 npm.cmd run lint
 npm.cmd test -- --run
-npm.cmd run test:e2e -- --project=desktop --grep "Phase 4 CSV upload"
+npm.cmd run test:e2e -- --project=desktop --grep "genuine uploaded dataset"
 ```
 
 ```powershell

@@ -2,9 +2,9 @@
 
 AutoInsight AI is an explainable, local-first platform for tabular data analysis and supervised machine learning. The planned workflow connects dataset profiling, approved cleaning, deterministic analytics, controlled ML experiments, evidence-backed AI research and downloadable reports.
 
-**Current delivery: Phase 4 — authenticated dataset ingestion and profiling.** Users can upload CSV and XLSX files, select a worksheet, see processing status, inspect paginated source records and review a persisted profile. Original artifacts are stored immutably; each API lookup is restricted to the signed-in owner. The Phase 3 landing page, sessions and dashboard remain connected.
+**Current delivery: Phase 5 — immutable cleaning and deterministic analytics.** Authenticated users can upload and profile CSV/XLSX files, preview allowlisted cleaning plans, approve background jobs that create linked immutable versions, compare version profiles, and run descriptive, grouped, correlation and chart-ready analysis over real stored rows. Every dataset/version lookup is owner-scoped.
 
-Cleaning, ML, agents, RAG and reporting execution remain in later phases. Profiling is deterministic and read-only. Profiles mark high-cardinality distinct counts and large-column medians as estimates, and state their calculation limits. Registration requires a display name, valid email and 12–128 character password. No demo credentials are seeded.
+ML, agents, RAG and reporting execution remain in later phases. Analytics is deterministic over bounded full versions; category and chart outputs are capped and results state their source and method. Profiles mark high-cardinality distinct counts and large-column medians as estimates. Registration requires a display name, valid email and 12–128 character password. No demo credentials are seeded.
 
 For normal development, start the infrastructure, migrate, and run the API and frontend as below. Open **Get Started** on the landing page. Visual sample controls are disabled by default; an explicit development-only `VITE_ENABLE_VISUAL_SAMPLES=true` enables labeled fixtures **after real sign-in**, solely for UI regression testing. They never establish authentication or bypass API authorization and are excluded from production builds.
 
@@ -91,4 +91,4 @@ See [Windows development](docs/development-windows.md) for configuration and tes
 - Require approval for persistent cleaning operations.
 - Use only allowlisted analytical tools; no generated Python or arbitrary shell/SQL execution.
 - Test each phase and report failures and limitations honestly.
-- Do not commit, push, advance to Phase 5 or configure public access without the required user approval.
+- Do not commit, push, advance to Phase 6 or configure public access without the required user approval.

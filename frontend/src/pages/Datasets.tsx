@@ -4,6 +4,7 @@ import { ArrowLeft, ArrowRight, FileSpreadsheet, RefreshCw, UploadCloud } from '
 import { api, ApiError, uploadDataset, type DatasetPreview, type DatasetProfile, type DatasetSummary, type DatasetVersion, type PreviewCell } from '../api/client'
 import { Badge, DataTable, Empty, Notice, PageHeader, Panel, ResourceFeedback, TabPanel, Tabs } from '../components/ui'
 import type { DataRow } from '../types/domain'
+import { isDatasetId } from '../app/datasetId'
 
 interface DatasetDetail extends DatasetSummary {
   checksum: string | null
@@ -29,6 +30,7 @@ function displayValue(value: PreviewCell): string | number | null {
 
 export default function Datasets() {
   const { id } = useParams()
+  const validDatasetId = isDatasetId(id)
   const navigate = useNavigate()
   const input = useRef<HTMLInputElement>(null)
   const [items, setItems] = useState<DatasetSummary[]>([])
@@ -69,6 +71,11 @@ export default function Datasets() {
       })
       return () => controller.abort()
     }
+    if (!validDatasetId) {
+      setError('This dataset address is invalid. Choose a dataset from your library.')
+      setLoading(false)
+      return
+    }
     let timer: ReturnType<typeof setTimeout> | undefined
     const load = async () => {
       try {
@@ -105,7 +112,7 @@ export default function Datasets() {
       controller.abort()
       if (timer) clearTimeout(timer)
     }
-  }, [id, page, listPage, reload])
+  }, [id, validDatasetId, page, listPage, reload])
 
   function chooseFile(next?: File) {
     setUploadError('')
@@ -152,7 +159,7 @@ export default function Datasets() {
   }
 
   async function retryProfile() {
-    if (!id) return
+    if (!validDatasetId) return
     setError('')
     try {
       await api(`/datasets/${id}/retry`, { method: 'POST' })
@@ -225,15 +232,18 @@ export default function Datasets() {
           ) : (
             <div className="dataset-list">
               {items.map((item) => (
-                <Link className="dataset-list-card" to={`/datasets/${item.id}`} key={item.id}>
+                <div className="dataset-list-card" key={item.id}>
                   <FileSpreadsheet size={28} aria-hidden="true" />
                   <div>
-                    <h3>{item.display_name}</h3>
+                    <Link className="dataset-list-title" to={`/datasets/${item.id}`}><h3>{item.display_name}</h3></Link>
                     <p>{item.original_filename} · {item.row_count ?? '—'} rows · {item.column_count ?? '—'} columns · {displaySize(item.file_size_bytes)}</p>
                   </div>
                   <Badge tone={statusTone(item.status)}>{item.status}</Badge>
-                  <ArrowRight size={18} aria-hidden="true" />
-                </Link>
+                  <div className="dataset-list-actions">
+                    {item.status === 'ready' && <Link className="button secondary" to={`/datasets/${item.id}/clean`}>Open Cleaning Studio</Link>}
+                    <Link className="dataset-open-link" to={`/datasets/${item.id}`} aria-label={`Open ${item.display_name} details`}><ArrowRight size={18} aria-hidden="true" /> Details</Link>
+                  </div>
+                </div>
               ))}
             </div>
           )}
@@ -267,11 +277,20 @@ export default function Datasets() {
 
   return (
     <>
+      {!validDatasetId ? (
+        <>
+          <PageHeader eyebrow="DATA FOUNDATION" title="Choose a dataset" description="Select a dataset from your private library." />
+          <Empty title="This dataset address is invalid">
+            Return to your dataset library and open a dataset you own.
+            <Link className="button" to="/datasets">Browse datasets</Link>
+          </Empty>
+        </>
+      ) : <>
       <PageHeader
         eyebrow="DATA FOUNDATION"
         title={detail?.display_name ?? 'Dataset workspace'}
         description={detail?.original_filename ?? 'Loading your dataset metadata.'}
-        actions={<Link className="button secondary" to="/datasets"><ArrowLeft size={16} /> All datasets</Link>}
+        actions={<div className="header-actions"><Link className="button secondary" to="/datasets"><ArrowLeft size={16} /> All datasets</Link>{detail?.status === 'ready' && <Link className="button" to={`/datasets/${detail.id}/clean`}>Open Cleaning Studio</Link>}</div>}
       />
       {error && <div role="alert"><Notice>{error}</Notice></div>}
       {loading && !detail && <ResourceFeedback state={{ kind: 'loading' }} />}
@@ -355,6 +374,7 @@ export default function Datasets() {
           {detail.status === 'ready' && !profile && <ResourceFeedback state={{ kind: 'failed', message: 'The profile is not available.' }} />}
         </>
       )}
+      </>}
     </>
   )
 }

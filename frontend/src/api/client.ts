@@ -73,6 +73,98 @@ export interface DatasetVersion {
   mime_type: string
 }
 
+export interface CleaningOperation {
+  op: 'drop_duplicates' | 'drop_missing_rows' | 'fill_missing' | 'trim_whitespace' | 'replace_text' | 'cast_numeric'
+  column?: string
+  columns?: string[]
+  keep?: 'first' | 'last'
+  strategy?: 'constant' | 'mode' | 'mean' | 'median'
+  value?: string | number
+  find?: string
+  replace?: string
+  invalid?: 'coerce' | 'error'
+}
+export interface CleaningPlan {
+  id: string
+  dataset_version_id: string
+  state: 'draft' | 'previewed' | 'approved' | 'queued' | 'running' | 'completed' | 'rejected' | 'failed'
+  operations: CleaningOperation[]
+  preview: {
+    source_rows: number
+    result_rows: number
+    rows_removed: number
+    source_missing_cells: number
+    result_missing_cells: number
+    source_duplicate_rows: number
+    result_duplicate_rows: number
+    before: Record<string, PreviewCell>[]
+    after: Record<string, PreviewCell>[]
+    warnings: string[]
+  } | null
+  job_id: string | null
+  attempt_count: number
+  result_version_id: string | null
+  error_message: string | null
+}
+export interface CleaningSuggestions {
+  dataset_id: string
+  dataset_version_id: string
+  missing_cells: number
+  duplicate_rows: number
+  operations: CleaningOperation[]
+  notes: string[]
+}
+export interface AnalyticsColumn {
+  id: string
+  name: string
+  null_count: number
+  null_percent: number
+  distinct_count: number
+  exact: boolean
+  numeric: {
+    count: number
+    mean: number
+    median: number
+    min: number
+    max: number
+    stddev: number | null
+    histogram: { start: number; end: number; count: number }[]
+  } | null
+  frequencies: { value: string; count: number }[] | null
+  frequency_warning?: string
+}
+export interface AnalyticsSummary {
+  dataset_id: string
+  dataset_version_id: string
+  operation: string
+  selected_columns: string[]
+  filters: unknown[]
+  grouping: string[]
+  rows_analyzed: number
+  exact: boolean
+  warnings: string[]
+  row_count: number
+  column_count: number
+  duplicate_rows: number
+  columns: AnalyticsColumn[]
+}
+export interface AnalyticsRows {
+  dataset_id: string
+  dataset_version_id: string
+  operation: string
+  selected_columns: string[]
+  grouping: string[]
+  filters: unknown[]
+  rows_analyzed: number
+  exact: boolean
+  warnings: string[]
+  rows: Record<string, string | number | null>[]
+}
+export interface CorrelationResult extends Omit<AnalyticsRows, 'rows'> {
+  columns: string[]
+  matrix: { column: string; values: (number | null)[] }[]
+}
+
 export interface User {
   id: string
   email: string

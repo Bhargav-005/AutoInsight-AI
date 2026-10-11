@@ -356,7 +356,7 @@ def test_migrations_reproduce_all_tables_in_an_empty_transactional_schema():
                 }
                 assert (
                     connection.scalar(text(f'SELECT version_num FROM "{schema}".alembic_version'))
-                    == "0002_domain_auth"
+                    == "0004_cleaning_plans"
                 )
                 command.upgrade(config, "head")
             finally:

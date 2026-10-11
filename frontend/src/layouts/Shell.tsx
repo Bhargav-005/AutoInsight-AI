@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router'
 import {
   Activity,
@@ -19,6 +19,8 @@ import {
 } from 'lucide-react'
 import { usePreview } from '../app/preview'
 import { useSession } from '../app/session'
+import { datasetIdFromPath, isDatasetId } from '../app/datasetId'
+import { api, type DatasetSummary } from '../api/client'
 import { Badge, Dialog } from '../components/ui'
 
 const navigation = [
@@ -26,17 +28,47 @@ const navigation = [
   { label: 'Datasets', path: '/datasets', icon: Database },
   {
     label: 'Cleaning Studio',
-    path: '/datasets/sample-retail/clean',
+    path: '/datasets',
     icon: SlidersHorizontal,
   },
   { label: 'AI Research', path: '/research/preview', icon: Network },
-  { label: 'Analytics', path: '/analysis/sample-retail', icon: BarChart3 },
+  { label: 'Analytics', path: '/datasets', icon: BarChart3 },
   { label: 'ML Studio', path: '/models/preview', icon: FlaskConical },
   { label: 'Reports & History', path: '/history', icon: History },
 ]
 
+const selectedDatasetStorageKey = 'autoinsight.selectedDatasetId'
+
+function readSelectedDatasetId() {
+  try {
+    const value = window.localStorage.getItem(selectedDatasetStorageKey) ?? ''
+    if (value === 'none') return value
+    return isDatasetId(value) ? value : ''
+  } catch {
+    return ''
+  }
+}
+
+function saveSelectedDatasetId(value: string) {
+  try {
+    if (value) window.localStorage.setItem(selectedDatasetStorageKey, value)
+    else window.localStorage.setItem(selectedDatasetStorageKey, 'none')
+  } catch {
+    // The selected route remains usable if browser storage is unavailable.
+  }
+}
+
+function clearSelectedDatasetId() {
+  try {
+    window.localStorage.removeItem(selectedDatasetStorageKey)
+  } catch {
+    // The selected route remains usable if browser storage is unavailable.
+  }
+}
+
 export default function Shell() {
   const session = useSession()
+  const userId = session.user?.id
   const [signingOut, setSigningOut] = useState(false)
   const [logoutError, setLogoutError] = useState('')
   async function signOut() {
@@ -55,16 +87,115 @@ export default function Shell() {
   const [collapsed, setCollapsed] = useState(false)
   const [mobile, setMobile] = useState(false)
   const [account, setAccount] = useState(false)
+  const [datasets, setDatasets] = useState<DatasetSummary[]>([])
+  const [datasetsLoaded, setDatasetsLoaded] = useState(false)
+  const [selectedDatasetId, setSelectedDatasetId] = useState(readSelectedDatasetId)
+  const selectionInitialized = useRef(false)
   const location = useLocation()
   const navigate = useNavigate()
   const { fixture, toggle, loading } = usePreview()
   const drawer = useRef<HTMLDialogElement>(null)
   const mobileButton = useRef<HTMLButtonElement>(null)
+  const readyDatasets = useMemo(
+    () => datasets.filter((item) => item.status === 'ready'),
+    [datasets],
+  )
+  const routeDatasetId = datasetIdFromPath(location.pathname)
+  const activeDatasetId = readyDatasets.some((item) => item.id === routeDatasetId)
+    ? routeDatasetId!
+    : readyDatasets.some((item) => item.id === selectedDatasetId)
+      ? selectedDatasetId
+      : ''
+
+  useEffect(() => {
+    if (!userId) {
+      setDatasets([])
+      setDatasetsLoaded(true)
+      return
+    }
+    const controller = new AbortController()
+    setDatasetsLoaded(false)
+    async function loadDatasets() {
+      const all: DatasetSummary[] = []
+      let page = 1
+      let total = Number.POSITIVE_INFINITY
+      while (all.length < total) {
+        const result = await api<{
+          items: DatasetSummary[]
+          total: number
+        }>(`/datasets?page=${page}&page_size=20`, { signal: controller.signal })
+        all.push(...result.items)
+        total = result.total
+        page += 1
+      }
+      if (!controller.signal.aborted) setDatasets(all)
+    }
+    void loadDatasets()
+      .catch(() => {
+        if (!controller.signal.aborted) setDatasets([])
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setDatasetsLoaded(true)
+      })
+    return () => controller.abort()
+  }, [userId])
+
+  useEffect(() => {
+    if (!datasetsLoaded) return
+    const routeDataset = readyDatasets.find((item) => item.id === routeDatasetId)
+    if (routeDataset) {
+      setSelectedDatasetId(routeDataset.id)
+      saveSelectedDatasetId(routeDataset.id)
+      selectionInitialized.current = true
+      return
+    }
+    if (!selectionInitialized.current) {
+      selectionInitialized.current = true
+      const saved = readyDatasets.find((item) => item.id === selectedDatasetId)
+      const initial = saved ?? (selectedDatasetId === 'none' ? undefined : readyDatasets[0])
+      const next = initial?.id ?? ''
+      setSelectedDatasetId(next)
+      if (next) saveSelectedDatasetId(next)
+      else if (selectedDatasetId !== 'none') clearSelectedDatasetId()
+      return
+    }
+    if (selectedDatasetId && !readyDatasets.some((item) => item.id === selectedDatasetId)) {
+      setSelectedDatasetId('')
+      clearSelectedDatasetId()
+    }
+  }, [datasetsLoaded, datasets, readyDatasets, location.pathname, routeDatasetId, selectedDatasetId])
+
+  function chooseDataset(id: string) {
+    const next = readyDatasets.find((item) => item.id === id)?.id ?? ''
+    setSelectedDatasetId(next)
+    saveSelectedDatasetId(next)
+    if (!next) {
+      if (location.pathname.includes('/clean') || location.pathname.startsWith('/analysis/')) {
+        navigate('/datasets')
+      }
+      return
+    }
+    if (location.pathname.includes('/clean')) navigate(`/datasets/${next}/clean`)
+    else if (location.pathname.startsWith('/analysis/')) navigate(`/analysis/${next}`)
+    else if (/^\/datasets\/[^/]+$/.test(location.pathname)) navigate(`/datasets/${next}`)
+  }
+
+  function navigationPath(label: string, fallback: string) {
+    if (label === 'Cleaning Studio') {
+      return activeDatasetId ? `/datasets/${activeDatasetId}/clean` : '/datasets'
+    }
+    if (label === 'Analytics') {
+      return activeDatasetId ? `/analysis/${activeDatasetId}` : '/datasets'
+    }
+    return fallback
+  }
   const current = location.pathname.includes('/clean')
     ? 'Cleaning Studio'
-    : location.pathname.startsWith('/datasets')
-      ? 'Datasets'
-      : (navigation.find((item) =>
+    : location.pathname.startsWith('/analysis/')
+      ? 'Analytics'
+      : location.pathname.startsWith('/datasets')
+        ? 'Datasets'
+        : (navigation.find((item) =>
           location.pathname.startsWith(
             item.path.split('/').slice(0, 2).join('/'),
           ),
@@ -105,24 +236,27 @@ export default function Shell() {
       </Link>
       <div className="nav-label">WORKSPACE</div>
       <nav aria-label={small ? 'Mobile navigation' : 'Main navigation'}>
-        {navigation.map(({ label, path, icon: Icon }) => (
-          <NavLink
-            key={label}
-            to={path}
-            end={path === '/datasets'}
-            title={collapsed ? label : undefined}
-            aria-label={label}
-            aria-current={current === label ? 'page' : undefined}
-            className={({ isActive }) =>
-              `nav-link ${isActive || current === label ? 'active' : ''}`
-            }
-            onClick={() => setMobile(false)}
-          >
-            <Icon size={19} aria-hidden="true" />
-            <span>{label}</span>
-            {label === 'AI Research' && <span className="nav-new">7</span>}
-          </NavLink>
-        ))}
+        {navigation.map(({ label, path, icon: Icon }) => {
+          const target = navigationPath(label, path)
+          return (
+            <NavLink
+              key={label}
+              to={target}
+              end={label === 'Datasets' || label === 'Cleaning Studio' || label === 'Analytics'}
+              title={collapsed ? label : undefined}
+              aria-label={label}
+              aria-current={current === label ? 'page' : undefined}
+              className={({ isActive }) =>
+                `nav-link ${current === label || (isActive && target !== '/datasets') ? 'active' : ''}`
+              }
+              onClick={() => setMobile(false)}
+            >
+              <Icon size={19} aria-hidden="true" />
+              <span>{label}</span>
+              {label === 'AI Research' && <span className="nav-new">7</span>}
+            </NavLink>
+          )
+        })}
       </nav>
       <div className="sidebar-bottom">
         <div className="local-workspace">
@@ -197,6 +331,8 @@ export default function Shell() {
           </div>
           <div className="topbar-actions">
             {[
+              'Dashboard',
+              'Datasets',
               'Cleaning Studio',
               'Analytics',
               'ML Studio',
@@ -205,17 +341,25 @@ export default function Shell() {
               <label className="context-selector">
                 <span className="sr-only">Dataset context</span>
                 <select
-                  value={fixture ? 'sample-retail' : ''}
-                  onChange={() => navigate('/datasets')}
+                  value={activeDatasetId}
+                  onChange={(event) => chooseDataset(event.target.value)}
+                  aria-label="Dataset context"
                 >
-                  <option value="">No connected dataset</option>
-                  {fixture && (
-                    <option value="sample-retail">
-                      Retail operations · Sample
+                  <option value="">
+                    {datasetsLoaded && readyDatasets.length === 0
+                      ? 'No ready datasets · open Datasets'
+                      : 'Choose a dataset…'}
+                  </option>
+                  {readyDatasets.map((dataset) => (
+                    <option key={dataset.id} value={dataset.id}>
+                      {dataset.display_name} · {dataset.original_filename}
                     </option>
-                  )}
+                  ))}
                 </select>
               </label>
+            )}
+            {session.user && datasetsLoaded && readyDatasets.length === 0 && (
+              <Link className="dataset-context-link" to="/datasets">Browse datasets</Link>
             )}
             <Link
               to="/status"
@@ -248,7 +392,7 @@ export default function Shell() {
               {fixture
                 ? 'Synthetic sample data. Nothing is saved or executed.'
                 : session.user
-                  ? 'Signed in. Data processing connects in later phases.'
+                  ? 'Signed in. Cleaning and analytics use your selected dataset versions.'
                   : 'Sign in to access your workspace.'}
             </span>
           </div>
@@ -278,7 +422,7 @@ export default function Shell() {
             design.
           </span>
           <span>
-            Account foundation <Badge>Phase 3</Badge>
+            Data workspace <Badge>Phase 5</Badge>
           </span>
         </footer>
       </div>

@@ -408,7 +408,7 @@ export function ResourceFeedback({ state }: { state: ResourceState<unknown> }) {
     loading: 'Loading workspace…',
     empty: 'Nothing here yet.',
     network: 'Connection unavailable. Your work has not been submitted.',
-    unauthorized: 'Sign in is required. Authentication connects in Phase 3.',
+    unauthorized: 'Sign in to access this resource.',
     forbidden: 'You do not have access to this resource.',
     unsupported: 'This operation is not available yet.',
     validation: 'message' in state ? state.message : '',
