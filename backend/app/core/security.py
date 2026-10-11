@@ -61,8 +61,24 @@ def csrf_value(request: Request, seed: str) -> str:
 
 def require_csrf(request: Request):
     check_origin(request)
-    if request.headers.get("content-type", "").split(";")[0].strip() != "application/json":
+    content_type = request.headers.get("content-type", "").split(";")[0].strip()
+    if content_type != "application/json":
         raise AppError(415, "JSON_REQUIRED", "Send an application/json request.")
+    seed = request.cookies.get(request.app.state.settings.csrf_cookie, "")
+    provided = request.headers.get("x-csrf-token", "")
+    if (
+        len(seed) != 43
+        or len(provided) != 64
+        or not hmac.compare_digest(provided, csrf_value(request, seed))
+    ):
+        raise AppError(403, "CSRF_REJECTED", "Security token is invalid. Reload and try again.")
+
+
+def require_upload_csrf(request: Request):
+    check_origin(request)
+    content_type = request.headers.get("content-type", "").split(";", 1)[0].strip()
+    if content_type != "multipart/form-data":
+        raise AppError(415, "MULTIPART_REQUIRED", "Send the dataset as multipart form data.")
     seed = request.cookies.get(request.app.state.settings.csrf_cookie, "")
     provided = request.headers.get("x-csrf-token", "")
     if (

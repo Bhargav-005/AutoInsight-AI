@@ -10,7 +10,7 @@ from app.db.session import create_db_engine
 
 
 def provision_role(settings):
-    """Grant only Phase 3 runtime privileges in this project's database."""
+    """Grant only the current API's runtime privileges in this project's database."""
     engine = create_db_engine(settings)
     try:
         with engine.begin() as connection:
@@ -38,11 +38,17 @@ def provision_role(settings):
             cursor.execute("GRANT CONNECT ON DATABASE autoinsight TO autoinsight_app")
             cursor.execute("GRANT USAGE ON SCHEMA public TO autoinsight_app")
             cursor.execute("GRANT SELECT ON ALL TABLES IN SCHEMA public TO autoinsight_app")
-            cursor.execute("GRANT INSERT, UPDATE ON users, sessions TO autoinsight_app")
+            cursor.execute(
+                "GRANT INSERT, UPDATE ON users, sessions, datasets, stored_artifacts, "
+                "dataset_versions, dataset_profiles TO autoinsight_app"
+            )
             cursor.execute("GRANT INSERT ON audit_events TO autoinsight_app")
     finally:
         engine.dispose()
-    print("Dedicated application role provisioned; no DDL or domain write privileges granted.")
+    print(
+        "Dedicated application role provisioned; no DDL or unrelated domain write "
+        "privileges granted."
+    )
 
 
 def main():

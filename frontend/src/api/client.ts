@@ -3,9 +3,74 @@ export class ApiError extends Error {
     public status: number,
     public code: string,
     message: string,
+    public details?: Record<string, unknown>,
   ) {
     super(message)
   }
+}
+
+export interface DatasetSummary {
+  id: string
+  display_name: string
+  original_filename: string
+  source_format: 'csv' | 'xlsx'
+  file_size_bytes: number
+  created_at: string
+  status: 'queued' | 'processing' | 'ready' | 'failed'
+  selected_sheet: string | null
+  row_count: number | null
+  column_count: number | null
+  processing_error?: string | null
+}
+export interface ProfileColumn {
+  id: string
+  name: string
+  data_type: string
+  missing_count: number
+  missing_percent: number
+  distinct_count: number
+  distinct_count_is_exact: boolean
+  sample_values: (string | number | boolean)[]
+  numeric_summary: {
+    min: number
+    max: number
+    mean: number
+    median: number
+    median_is_approximate: boolean
+    non_finite_count: number
+  } | null
+}
+export interface DatasetProfile {
+  row_count: number
+  column_count: number
+  columns: ProfileColumn[]
+  duplicate_row_count: number
+  quality_summary: {
+    missing_cell_count: number
+    missing_cell_percent: number
+    columns_with_missing_values: number
+    duplicate_row_count: number
+  }
+  methodology: Record<string, string>
+  selected_sheet: string | null
+}
+export type PreviewCell = string | number | boolean | null
+export interface DatasetPreview {
+  columns: ProfileColumn[]
+  rows: Record<string, PreviewCell>[]
+  page: number
+  page_size: number
+  total_rows: number
+  total_pages: number
+}
+export interface DatasetVersion {
+  id: string
+  version_no: number
+  kind: string
+  created_at: string
+  file_size_bytes: number
+  checksum: string
+  mime_type: string
 }
 
 export interface User {
@@ -65,6 +130,7 @@ export async function api<T>(
         response.status,
         body?.error?.code ?? 'API_UNAVAILABLE',
         body?.error?.message ?? 'The API is unavailable. Please try again.',
+        body?.error?.details,
       )
     }
     if (
@@ -91,4 +157,59 @@ export async function api<T>(
     clearTimeout(timeout)
     options.signal?.removeEventListener('abort', abort)
   }
+}
+
+export async function uploadDataset(
+  file: File,
+  sheetName: string | undefined,
+  onProgress: (progress: number | null) => void,
+): Promise<DatasetSummary> {
+  const csrf = await api<{ csrf_token: string }>('/auth/csrf')
+  const form = new FormData()
+  form.append('file', file)
+  if (sheetName) form.append('sheet_name', sheetName)
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest()
+    request.timeout = 180_000
+    let body: {
+      data?: unknown
+      meta?: { version?: string }
+      error?: { code?: string; message?: string; details?: Record<string, unknown> } | null
+    }
+    request.open('POST', '/api/v1/datasets')
+    request.withCredentials = true
+    request.setRequestHeader('Accept', 'application/json')
+    request.setRequestHeader('X-CSRF-Token', csrf.csrf_token)
+    request.upload.onprogress = (event) => {
+      onProgress(event.lengthComputable ? Math.round((event.loaded / event.total) * 100) : null)
+    }
+    request.onerror = () => reject(new ApiError(0, 'NETWORK_ERROR', 'Cannot reach the API. Check that the local backend is running.'))
+    request.onabort = () => reject(new ApiError(0, 'NETWORK_ERROR', 'The upload was interrupted.'))
+    request.ontimeout = () => reject(new ApiError(0, 'UPLOAD_TIMEOUT', 'The upload took too long. Please try again.'))
+    request.onload = () => {
+      try {
+        body = JSON.parse(request.responseText) as typeof body
+      } catch {
+        reject(new ApiError(503, 'INVALID_RESPONSE', 'The API returned an unexpected response.'))
+        return
+      }
+      if (request.status < 200 || request.status >= 300) {
+        if (request.status === 401)
+          window.dispatchEvent(new Event('autoinsight:session-expired'))
+        reject(new ApiError(
+          request.status,
+          body?.error?.code ?? 'API_UNAVAILABLE',
+          body?.error?.message ?? 'The upload could not be completed.',
+          body?.error?.details,
+        ))
+        return
+      }
+      if (body?.meta?.version !== 'v1' || body.error !== null || body.data == null) {
+        reject(new ApiError(503, 'INVALID_RESPONSE', 'The API returned an unexpected response.'))
+        return
+      }
+      resolve(body.data as DatasetSummary)
+    }
+    request.send(form)
+  })
 }

@@ -2,11 +2,11 @@
 
 AutoInsight AI is an explainable, local-first platform for tabular data analysis and supervised machine learning. The planned workflow connects dataset profiling, approved cleaning, deterministic analytics, controlled ML experiments, evidence-backed AI research and downloadable reports.
 
-**Current delivery: Phase 2 - frontend interfaces.** The responsive shell includes authentication forms, dashboard, datasets, Cleaning Studio, seven-role research workspace, analytics, ML Studio, and reports/history. The original measured API status is preserved at `/status`. Authentication and data execution remain in later backend phases; all workspace screens explicitly identify themselves as frontend previews.
+**Current delivery: Phase 4 — authenticated dataset ingestion and profiling.** Users can upload CSV and XLSX files, select a worksheet, see processing status, inspect paginated source records and review a persisted profile. Original artifacts are stored immutably; each API lookup is restricted to the signed-in owner. The Phase 3 landing page, sessions and dashboard remain connected.
 
-For frontend-only exploration, run `npm.cmd ci` and `npm.cmd run dev` in `E:\FSI\frontend`, open <http://127.0.0.1:5173>, and select **Open frontend preview**. **Explore sample workspace** loads labeled synthetic fixtures in development only. Samples are excluded from production bundles; no credentials, uploads or jobs are submitted by preview controls. Run `npm.cmd run test:e2e` for desktop/mobile journeys and the 320/375/768/1024/1440-pixel viewport checks. Chromium must be installed as described in the Windows development guide.
+Cleaning, ML, agents, RAG and reporting execution remain in later phases. Profiling is deterministic and read-only. Profiles mark high-cardinality distinct counts and large-column medians as estimates, and state their calculation limits. Registration requires a display name, valid email and 12–128 character password. No demo credentials are seeded.
 
-Phase 2 verification (2026-10-11): TypeScript, ESLint, 31 component tests and the production build passed. Playwright passed 13 cases; one duplicate mobile viewport-matrix case is intentionally skipped because the full matrix runs in the desktop project. Automated accessibility checks found no violations on the tested core pages. Desktop, tablet and mobile screenshots were visually reviewed. Chromium was tested; broader browser and manual screen-reader testing remain future verification work.
+For normal development, start the infrastructure, migrate, and run the API and frontend as below. Open **Get Started** on the landing page. Visual sample controls are disabled by default; an explicit development-only `VITE_ENABLE_VISUAL_SAMPLES=true` enables labeled fixtures **after real sign-in**, solely for UI regression testing. They never establish authentication or bypass API authorization and are excluded from production builds.
 
 ## Workspace and repository
 
@@ -29,7 +29,7 @@ The existing `verdikt-postgres` container belongs to another project. Its contai
 - [Phase 1 implementation and verification](docs/checkpoint-b.md)
 - [Local storage policy](storage/README.md)
 
-The user's master engineering instructions and subsequent approved corrections take precedence over proposed defaults in the four reference PDFs. The PDFs are referenced in the documentation; they have not been copied into the repository.
+The user's master engineering instructions and subsequent approved corrections take precedence over proposed defaults in the four reference PDFs. The owner-provided PDFs are available locally under `docs/references`; they are not application assets.
 
 ## Current repository contents
 
@@ -77,7 +77,7 @@ Set-Location -LiteralPath 'E:\FSI'
 .\scripts\Start-Frontend.ps1
 ```
 
-Open <http://127.0.0.1:5173>. API documentation: <http://127.0.0.1:8000/api/v1/docs>. Stop each foreground process with Ctrl+C, then run `.\scripts\Stop-Infrastructure.ps1` from `E:\FSI`. Stopping services preserves volumes and artifacts. Setup preserves an existing `.env`; on first setup it creates independent local secrets.
+Open <http://127.0.0.1:5173>. API documentation: <http://127.0.0.1:8000/api/v1/docs>. Stop each foreground process with Ctrl+C, then run `.\scripts\Stop-Infrastructure.ps1` from `E:\FSI`. Stopping services preserves volumes and artifacts. Setup preserves existing secrets and adds missing `APP_DB_PASSWORD` and `AUTH_CSRF_SECRET` values to the ignored `.env`. Migrations provision the restricted `autoinsight_app` database role.
 
 `GET /api/v1/health/live` returns 200 when the API can respond. `GET /api/v1/health/ready` returns 200 only when database/extension/migration checks, authenticated Redis ping and a recent queue-worker heartbeat pass. It returns 503 for failed or disabled dependencies. The frontend separately handles network, timeout and invalid-response errors.
 
@@ -91,4 +91,4 @@ See [Windows development](docs/development-windows.md) for configuration and tes
 - Require approval for persistent cleaning operations.
 - Use only allowlisted analytical tools; no generated Python or arbitrary shell/SQL execution.
 - Test each phase and report failures and limitations honestly.
-- Do not commit, push, advance to Phase 3 or configure public access without the required user approval.
+- Do not commit, push, advance to Phase 5 or configure public access without the required user approval.

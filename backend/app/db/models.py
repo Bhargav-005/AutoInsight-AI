@@ -99,7 +99,17 @@ class Dataset(Identity, Created, Owned, Base):
     __tablename__ = "datasets"
     display_name: Mapped[str] = mapped_column(Text)
     source_format: Mapped[str] = mapped_column(Text)
-    __table_args__ = owned(choices("source_format", "csv xlsx"))
+    original_filename: Mapped[str] = mapped_column(Text, server_default="")
+    media_type: Mapped[str] = mapped_column(Text, server_default="")
+    file_size_bytes: Mapped[int] = mapped_column(BigInteger, server_default="0")
+    status: Mapped[str] = mapped_column(Text, server_default="ready", index=True)
+    selected_sheet: Mapped[str | None] = mapped_column(Text)
+    processing_error: Mapped[str | None] = mapped_column(Text)
+    __table_args__ = owned(
+        choices("source_format", "csv xlsx"),
+        CheckConstraint("file_size_bytes >= 0", name="nonnegative_file_size"),
+        choices("status", "queued processing ready failed"),
+    )
 
 
 class DatasetVersion(Identity, Created, Owned, Base):

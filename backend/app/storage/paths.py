@@ -1,9 +1,10 @@
 import hashlib
 import re
 from pathlib import Path
+from time import time
 from uuid import uuid4
 
-REFERENCE = re.compile(r"[0-9a-f]{32}\.(?:bin|json|txt|csv|parquet|pdf|joblib|png)\Z")
+REFERENCE = re.compile(r"[0-9a-f]{32}\.(?:bin|json|txt|csv|xlsx|parquet|pdf|joblib|png)\Z")
 
 
 class ArtifactStore:
@@ -31,3 +32,23 @@ class ArtifactStore:
 
     def read(self, reference: str) -> bytes:
         return self.resolve(reference).read_bytes()
+
+    def delete(self, reference: str) -> None:
+        path = self.resolve(reference)
+        path.unlink(missing_ok=True)
+
+
+def cleanup_abandoned_uploads(root: Path, *, older_than_seconds: int = 86_400) -> int:
+    """Remove only old partials created by this uploader; never recurse or follow links."""
+    cutoff = time() - older_than_seconds
+    removed = 0
+    for candidate in root.glob(".upload-*.part"):
+        try:
+            if candidate.is_symlink() or not candidate.is_file():
+                continue
+            if candidate.stat().st_mtime < cutoff:
+                candidate.unlink()
+                removed += 1
+        except OSError:
+            continue
+    return removed

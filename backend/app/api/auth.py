@@ -91,14 +91,6 @@ class Overview(BaseModel):
     reports: int
 
 
-class DatasetView(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-    id: UUID
-    display_name: str
-    source_format: str
-    created_at: datetime
-
-
 def database(request: Request):
     if request.app.state.engine is None:
         raise AppError(503, "AUTH_UNAVAILABLE", "Account services are temporarily unavailable.")
@@ -268,13 +260,3 @@ def overview(request: Request, db: DB, user: CurrentUser):
         db.execute(select(*(query.label(name) for name, query in counts.items()))).mappings().one()
     )
     return result(request, dict(row))
-
-
-@router.get("/datasets/{dataset_id}", response_model=Envelope[DatasetView])
-def dataset_metadata(dataset_id: UUID, request: Request, db: DB, user: CurrentUser):
-    dataset = db.scalar(
-        select(Dataset).where(Dataset.id == dataset_id, Dataset.owner_id == user.id)
-    )
-    if dataset is None:
-        raise AppError(404, "NOT_FOUND", "Dataset not found.")
-    return result(request, DatasetView.model_validate(dataset))

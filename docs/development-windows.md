@@ -2,7 +2,7 @@
 
 ## Current phase
 
-Phase 1 includes local frontend/API scaffolds, dedicated PostgreSQL/Redis, Linux RQ worker, migrations and tests. Authentication and dataset features are not implemented. Start Docker Desktop before infrastructure commands.
+Phase 4 includes real account sessions, CSV/XLSX upload and profiling, alongside the existing frontend, infrastructure and worker. Cleaning, ML, agents, RAG and reports are not implemented. Start Docker Desktop before infrastructure commands.
 
 Use Windows 11, VS Code and PowerShell with `E:\FSI` as the permanent workspace. Ollama model storage stays at `D:\OllamaModels`; no project setup step may relocate it.
 
@@ -18,9 +18,22 @@ Set-Location -LiteralPath 'E:\FSI'
 
 Run `.\scripts\Start-Api.ps1` and `.\scripts\Start-Frontend.ps1` from `E:\FSI` in separate terminals. Open <http://127.0.0.1:5173>; API docs are at <http://127.0.0.1:8000/api/v1/docs>. Stop those foreground processes with Ctrl+C, then run `.\scripts\Stop-Infrastructure.ps1`. No stop command removes data or touches Verdikt.
 
-Setup uses locked Python dependencies and `npm ci`. It preserves existing environment files. The API startup script does not auto-reload Python changes; restart it after edits. Vite reloads frontend edits.
+Setup uses locked Python dependencies and `npm ci`. It preserves existing settings and appends only missing project-local security secrets. `Invoke-Migrations.ps1` applies forward migrations and provisions the restricted application database role. The API startup script does not auto-reload Python changes; restart it after edits. Vite reloads frontend edits.
 
 ## Tests
+
+Use focused Phase 4 checks during development before running broader regression suites:
+
+```powershell
+Set-Location -LiteralPath 'E:\FSI\backend'
+uv run pytest -q tests/test_profiling.py tests/test_storage.py
+uv run pytest -m integration -q tests/test_dataset_api.py
+Set-Location -LiteralPath 'E:\FSI\frontend'
+npm.cmd run typecheck
+npm.cmd run lint
+npm.cmd test -- --run
+npm.cmd run test:e2e -- --project=desktop --grep "Phase 4 CSV upload"
+```
 
 ```powershell
 Set-Location -LiteralPath 'E:\FSI'
@@ -36,12 +49,9 @@ Set-Location -LiteralPath 'E:\FSI\frontend'
 $env:PLAYWRIGHT_BROWSERS_PATH = 'E:\FSI\.cache\ms-playwright'
 .\node_modules\.bin\playwright.cmd install chromium
 npm.cmd run test:e2e
-$env:PHASE1_INFRA_E2E = '1'
-npm.cmd run test:e2e
-Remove-Item Env:PHASE1_INFRA_E2E
 ```
 
-Browser tests start their own API/frontend on ports 8011/5175 and stop them afterward. The default suite exercises disabled infrastructure; the second run exercises the actual running services. Screenshots go to ignored `frontend/test-results`.
+Browser tests start their own API/frontend on ports 8011/5175 and stop them afterward. The suite now requires migrated AutoInsight PostgreSQL, Redis and the worker, and exercises real registration and sessions. Backend unit tests still cover disabled infrastructure. Browser tests use uniquely named `phase3-e2e-*` synthetic accounts and two synthetic metadata rows per run; these test records are retained, never mixed with actual user records. Run browser tests after the infrastructure suite finishes: its persistence test temporarily restarts the services. Screenshots go to ignored `frontend/test-results`.
 
 ## Safe current commands
 
@@ -66,7 +76,9 @@ git check-attr text eol -- README.md .env.example scripts/example.ps1
 | `PROJECT_ROOT`, `FILE_STORAGE_ROOT` | Windows workspace and shared artifact directory |
 | `WORKER_FILE_STORAGE_ROOT` | Container-local path for the same artifact directory |
 | `API_*`, `FRONTEND_*` | Localhost-only development bindings |
-| `VITE_API_BASE_URL` | Public browser configuration only; never a secret |
+| `API_PROXY_TARGET` | Vite loopback proxy target; defaults to `http://127.0.0.1:8000`. Browser URLs remain `/api/v1`; old `VITE_API_BASE_URL` values are unused. |
+| `APP_DB_PASSWORD`, `AUTH_CSRF_SECRET`, `SESSION_HOURS` | Restricted runtime DB password, persistent CSRF signing key and session lifetime |
+| `VITE_ENABLE_VISUAL_SAMPLES` | Optional development-only fixtures after real login; unset/false by default |
 | `CORS_ORIGINS` | Exact local frontend origins; no wildcard with credentials |
 | `COMPOSE_PROJECT_NAME` | Independent `autoinsight` project |
 | `POSTGRES_*`, `REDIS_*` | Dedicated infrastructure endpoints and credentials |
@@ -75,17 +87,17 @@ git check-attr text eol -- README.md .env.example scripts/example.ps1
 | `RQ_*` | Project queue and JSON serialization contract |
 | `OLLAMA_*` | Existing model/service details; model-directory value is documentary unless explicitly configured on the server |
 | `LLM_*`, `MAX_*` | Later-phase resource limits, except `MAX_JOB_SECONDS`, which sets the Phase 1 queue timeout |
-| `JWT_SECRET`, `RAG_EMBEDDING_MODEL` | Reserved later-phase settings, intentionally blank |
+| `RAG_EMBEDDING_MODEL` | Reserved for Phase 8, intentionally blank |
 
-The backend constructs an escaped SQLAlchemy URL and authenticated Redis connection from component settings. The legacy URL keys in the template remain reserved and are not consumed. Containers use `postgres:5432` and `redis:6379`; Windows uses the selected localhost host ports. No secret may appear in frontend build variables or logs. Database superuser/migration/runtime privileges will be separated in Phase 3 before user-data APIs are introduced.
+The backend constructs an escaped SQLAlchemy URL and authenticated Redis connection from component settings. The legacy URL keys in the template remain reserved and are not consumed. Containers use `postgres:5432` and `redis:6379`; Windows uses the selected localhost host ports. No secret may appear in frontend build variables or logs. The API uses the restricted `autoinsight_app` role; migrations retain the dedicated AutoInsight owner account. Authentication rate limits are 5 registration and 10 login attempts per minute by default. Browser tests use an isolated key namespace and higher test-only limits.
 
-The upload limit is defined in bytes: 25,000,000 (25 decimal MB). The initial 900-second timeout is a configurable engineering default, not a benchmark result.
+The upload limit is defined in bytes: 25,000,000 (25 decimal MB). Profiling jobs have a 180-second timeout and run in the worker's 512 MB, one-CPU container. Row and column caps are 100,000 and 100. The initial general job timeout of 900 seconds is a configurable engineering default, not a benchmark result.
 
 ## Git and line endings
 
 Keep the existing `.git`, `main` branch and `origin` URL. Do not run `git init`, replace remotes or change global Git settings. `.gitattributes` normalizes text to LF and Windows batch files to CRLF; PowerShell files use LF. `.editorconfig` specifies UTF-8, final newlines, space indentation and whitespace policy.
 
-The ignore policy blocks secrets, local configuration, dependency directories, runtime storage, tabular datasets, trained models and generated reports. Templates and future lockfiles remain trackable. If a future synthetic test fixture needs an exception, add a narrow reviewed exception; do not force-add real data or secrets. Ignore rules do not remove files already tracked, so review staged changes before every commit.
+The ignore policy blocks secrets, local configuration, dependency directories, runtime storage, tabular datasets, trained models and generated reports. Uploaded source artifacts and synthetic integration records remain in local storage/DB for persistence verification; test accounts use unique `phase4-*` emails. Templates and future lockfiles remain trackable. If a future synthetic test fixture needs an exception, add a narrow reviewed exception; do not force-add real data or secrets. Ignore rules do not remove files already tracked, so review staged changes before every commit.
 
 ## Infrastructure boundaries
 

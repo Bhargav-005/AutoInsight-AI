@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     rq_queue: str = "autoinsight"
     file_storage_root: Path = PROJECT_ROOT / "storage" / "artifacts"
     max_job_seconds: int = Field(default=900, ge=1, le=900)
+    max_upload_bytes: int = Field(default=25_000_000, ge=1, le=25_000_000)
+    max_dataset_rows: int = Field(default=100_000, ge=1, le=100_000)
+    max_dataset_columns: int = Field(default=100, ge=1, le=100)
     app_db_password: SecretStr = SecretStr("")
     auth_csrf_secret: SecretStr = SecretStr("")
     session_hours: int = Field(default=24, ge=1, le=168)

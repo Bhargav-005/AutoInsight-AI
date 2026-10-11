@@ -11,6 +11,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from starlette.exceptions import HTTPException
 
 from app.api.auth import router as auth_router
+from app.api.datasets import router as datasets_router
 from app.api.health import router
 from app.core.config import Settings
 from app.core.errors import AppError, app_error, error_response, http_error, validation_error
@@ -54,6 +55,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.include_router(router)
     app.include_router(auth_router)
+    app.include_router(datasets_router)
     app.add_exception_handler(AppError, app_error)
     app.add_exception_handler(HTTPException, http_error)
     app.add_exception_handler(RequestValidationError, validation_error)

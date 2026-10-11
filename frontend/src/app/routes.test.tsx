@@ -37,22 +37,20 @@ const mount = (route: string) => {
   if (!vi.isMockFunction(globalThis.fetch))
     vi.stubGlobal(
       'fetch',
-      vi
-        .fn()
-        .mockResolvedValue(
-          new Response(
-            JSON.stringify({
-              data: {
-                datasets: 0,
-                research_runs: 0,
-                ml_experiments: 0,
-                reports: 0,
-              },
-              meta: { version: 'v1' },
-              error: null,
-            }),
-          ),
-        ),
+      vi.fn((input: RequestInfo | URL) => {
+        const url = String(input)
+        const error = { code: 'DATASET_NOT_FOUND', message: 'Dataset not found.' }
+        const data = url.endsWith('/datasets?page=1&page_size=20')
+          ? { items: [], page: 1, page_size: 100, total: 0 }
+          : url.includes('/datasets/')
+            ? null
+            : { datasets: 0, research_runs: 0, ml_experiments: 0, reports: 0 }
+        return Promise.resolve(new Response(JSON.stringify({
+          data,
+          meta: { version: 'v1' },
+          error: data === null ? error : null,
+        }), { status: data === null ? 404 : 200 }))
+      }),
     )
   return render(
     <MemoryRouter initialEntries={[route]}>
@@ -191,26 +189,43 @@ describe('workspace routes', () => {
     })
     expect(fetch).not.toHaveBeenCalled()
   })
-  it('loads a labeled sample, paginates it, and never uploads a selected file', async () => {
-    const fetch = vi.fn()
+  it('lists only account datasets and waits for explicit upload submission', async () => {
+    const fetch = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input)
+      const data = url.endsWith('/datasets?page=1&page_size=20')
+        ? {
+            items: [{
+              id: 'dataset-1',
+              display_name: 'Account source',
+              original_filename: 'account.csv',
+              source_format: 'csv',
+              file_size_bytes: 12,
+              created_at: '2026-10-01T00:00:00Z',
+              status: 'ready',
+              selected_sheet: null,
+              row_count: 1,
+              column_count: 2,
+            }],
+            page: 1,
+            page_size: 100,
+            total: 1,
+          }
+        : { datasets: 0, research_runs: 0, ml_experiments: 0, reports: 0 }
+      return Promise.resolve(new Response(JSON.stringify({
+        data,
+        meta: { version: 'v1' },
+        error: null,
+      })))
+    })
     vi.stubGlobal('fetch', fetch)
-    mount('/datasets/sample-retail')
-    fireEvent.click(
-      await screen.findByRole('button', { name: /Explore sample workspace/ }),
-    )
-    expect(
-      await screen.findByRole('heading', { name: 'Retail operations' }),
-    ).toBeInTheDocument()
-    expect(screen.getByText('SO-1001')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Next page' }))
-    expect(screen.getByText('SO-1007')).toBeInTheDocument()
+    mount('/datasets')
+    expect(await screen.findByRole('heading', { name: 'Your datasets' })).toBeInTheDocument()
+    expect(await screen.findByRole('link', { name: /account\.csv/ })).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('Choose dataset file'), {
       target: { files: [new File(['a,b'], 'local.csv', { type: 'text/csv' })] },
     })
-    expect(screen.getByRole('status')).toHaveTextContent(
-      'not read, sent or saved',
-    )
-    expect(fetch).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Upload dataset' })).toBeInTheDocument()
+    expect(fetch.mock.calls.every(([input]) => !String(input).includes('/auth/'))).toBe(true)
   })
   it('keeps cleaning suggestions distinct from applied versions', async () => {
     mount('/datasets/sample-retail/clean')
