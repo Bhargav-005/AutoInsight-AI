@@ -189,13 +189,15 @@ export default function Auth({ register = false }: { register?: boolean }) {
               {register ? 'Sign in' : 'Create an account'}
             </Link>
           </p>
-          <div className="auth-preview">
-            <span>JUST EXPLORING?</span>
-            <Link to="/dashboard">
-              Open frontend preview <ArrowRight size={16} />
-            </Link>
-            <small>No sign-in, saved data or backend actions.</small>
-          </div>
+          {import.meta.env.DEV && (
+            <div className="auth-preview">
+              <span>JUST EXPLORING?</span>
+              <Link to="/dashboard">
+                Open frontend preview <ArrowRight size={16} />
+              </Link>
+              <small>No sign-in, saved data or backend actions.</small>
+            </div>
+          )}
         </div>
         <p className="auth-bottom">
           Your data. Your process. Your understanding.

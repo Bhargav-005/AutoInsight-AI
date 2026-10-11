@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState } from 'react'
-import { BrowserRouter, Link, Navigate, Route, Routes } from 'react-router'
+import { BrowserRouter, Link, Route, Routes } from 'react-router'
 import { PreviewContext } from './app/preview'
 import type { WorkspaceFixture } from './types/domain'
 import Shell from './layouts/Shell'
@@ -14,6 +14,7 @@ const Research = lazy(() => import('./pages/Research'))
 const Analytics = lazy(() => import('./pages/Analytics'))
 const Models = lazy(() => import('./pages/Models'))
 const History = lazy(() => import('./pages/History'))
+const Landing = lazy(() => import('./pages/Landing'))
 
 export function AppRoutes() {
   const [fixture, setFixture] = useState<WorkspaceFixture | null>(null)
@@ -43,7 +44,7 @@ export function AppRoutes() {
         }
       >
         <Routes>
-          <Route path="/" element={<Navigate to="/login" replace />} />
+          <Route path="/" element={<Landing />} />
           <Route path="/login" element={<Auth key="login" />} />
           <Route path="/register" element={<Auth register key="register" />} />
           <Route element={<Shell />}>

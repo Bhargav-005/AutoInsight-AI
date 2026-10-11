@@ -12,6 +12,37 @@ beforeAll(() => {
 })
 const mount = (route: string) => render(<MemoryRouter initialEntries={[route]}><AppRoutes /></MemoryRouter>)
 
+describe('public landing page', () => {
+  it('renders independently of the API and keeps future execution explicit', async () => {
+    const fetch = vi.fn(); vi.stubGlobal('fetch', fetch)
+    mount('/')
+    expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('From raw datato explainableintelligence.')
+    expect(screen.queryByRole('navigation', { name: 'Main navigation' })).not.toBeInTheDocument()
+    expect(screen.getByText(/Data processing, authentication and AI execution are in development/)).toBeInTheDocument()
+    expect(screen.getByText(/No analysis or agent execution/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Explore Platform/ })).toHaveAttribute('href', '/dashboard')
+    expect(fetch).not.toHaveBeenCalled()
+  })
+  it('exposes all seven planned roles with a single selected description', async () => {
+    mount('/')
+    const roles = await screen.findByRole('group', { name: 'Seven logical agent roles' })
+    const buttons = within(roles).getAllByRole('button')
+    expect(buttons).toHaveLength(7)
+    for (const button of buttons) {
+      fireEvent.click(button)
+      expect(within(roles).getAllByRole('button', { pressed: true })).toEqual([button])
+      expect(document.getElementById('agent-description')).toHaveTextContent(button.querySelector('strong')!.textContent!)
+    }
+    expect(screen.getByRole('heading', { name: 'An explanation you can return to.' })).toBeInTheDocument()
+    expect(screen.getByText(/not an eighth agent/)).toBeInTheDocument()
+  })
+  it.each([['Get Started', 'Create your workspace'], ['Sign In', 'Welcome back.']])('connects %s to the existing public interface', async (label, heading) => {
+    mount('/')
+    fireEvent.click((await screen.findAllByRole('link', { name: label }))[0])
+    expect(await screen.findByRole('heading', { name: heading })).toBeInTheDocument()
+  })
+})
+
 describe('workspace routes', () => {
   it.each([
     ['/login', 'Welcome back.'], ['/register', 'Create your workspace'],
