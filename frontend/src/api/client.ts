@@ -195,6 +195,29 @@ export interface ResearchEvidence {
   evidence_type: string
   payload: Record<string, unknown>
 }
+export interface ReferenceDocument {
+  id: string
+  title: string
+  source_filename: string
+  file_type: string
+  status: 'queued' | 'processing' | 'indexed' | 'failed' | 'removed'
+  page_count: number | null
+  chunk_count: number
+  processing_error: string | null
+  embedding_model: string | null
+  embedding_dimensions: number | null
+  created_at: string
+  size_bytes: number
+}
+export interface ReportRecord {
+  id: string
+  research_run_id: string
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
+  error_message: string | null
+  created_at: string
+  question: string
+  dataset_name: string
+}
 export interface ResearchRun {
   id: string
   dataset_id: string
@@ -342,4 +365,49 @@ export async function uploadDataset(
     }
     request.send(form)
   })
+}
+
+export async function uploadReferenceDocument(file: File): Promise<ReferenceDocument> {
+  const csrf = await api<{ csrf_token: string }>('/auth/csrf')
+  const form = new FormData()
+  form.append('file', file)
+  const response = await fetch('/api/v1/documents', {
+    method: 'POST',
+    credentials: 'same-origin',
+    cache: 'no-store',
+    headers: { Accept: 'application/json', 'X-CSRF-Token': csrf.csrf_token },
+    body: form,
+  })
+  const body = await response.json().catch(() => null)
+  if (!response.ok || body?.data == null || body?.meta?.version !== 'v1') {
+    throw new ApiError(
+      response.status,
+      body?.error?.code ?? 'DOCUMENT_UPLOAD_FAILED',
+      body?.error?.message ?? 'The document could not be uploaded.',
+      body?.error?.details,
+    )
+  }
+  return body.data as ReferenceDocument
+}
+
+export async function downloadResearchReport(reportId: string): Promise<void> {
+  const response = await fetch(`/api/v1/reports/${reportId}/download`, {
+    credentials: 'same-origin',
+    cache: 'no-store',
+    headers: { Accept: 'application/pdf' },
+  })
+  if (!response.ok) {
+    const body = await response.json().catch(() => null)
+    throw new ApiError(
+      response.status,
+      body?.error?.code ?? 'REPORT_DOWNLOAD_FAILED',
+      body?.error?.message ?? 'The report could not be downloaded.',
+    )
+  }
+  const objectUrl = URL.createObjectURL(await response.blob())
+  const link = document.createElement('a')
+  link.href = objectUrl
+  link.download = `autoinsight-report-${reportId.slice(0, 8)}.pdf`
+  link.click()
+  URL.revokeObjectURL(objectUrl)
 }

@@ -9,6 +9,7 @@ import {
   Database,
   FlaskConical,
   History,
+  BookOpen,
   LayoutDashboard,
   Menu,
   Network,
@@ -32,6 +33,7 @@ const navigation = [
     icon: SlidersHorizontal,
   },
   { label: 'AI Research', path: '/research/preview', icon: Network },
+  { label: 'Knowledge Base', path: '/knowledge', icon: BookOpen },
   { label: 'Analytics', path: '/datasets', icon: BarChart3 },
   { label: 'ML Studio', path: '/models/preview', icon: FlaskConical },
   { label: 'Reports & History', path: '/history', icon: History },
@@ -203,6 +205,8 @@ export default function Shell() {
       ? 'Analytics'
       : location.pathname.startsWith('/research/')
         ? 'AI Research'
+      : location.pathname.startsWith('/knowledge')
+        ? 'Knowledge Base'
       : location.pathname.startsWith('/datasets')
         ? 'Datasets'
         : (navigation.find((item) =>

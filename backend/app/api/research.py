@@ -28,11 +28,13 @@ from app.core.security import require_csrf
 from app.db.models import (
     AgentStep,
     AuditEvent,
+    DatasetDocument,
     DatasetProfile,
     DatasetVersion,
     EvidenceItem,
     ResearchRun,
 )
+from app.services.comparisons import comparison_presentation
 from app.services.research import (
     build_planning_graph,
     dataset_context,
@@ -50,6 +52,7 @@ class ResearchCreate(BaseModel):
     dataset_id: UUID
     dataset_version_id: UUID
     question: str = Field(min_length=8, max_length=1000)
+    document_ids: list[UUID] = Field(default_factory=list, max_length=20)
 
     @field_validator("question")
     @classmethod
@@ -57,6 +60,13 @@ class ResearchCreate(BaseModel):
         value = value.strip()
         if not 8 <= len(value) <= 1000:
             raise ValueError("The research question must contain 8 to 1000 characters.")
+        return value
+
+    @field_validator("document_ids")
+    @classmethod
+    def unique_documents(cls, value):
+        if len(value) != len(set(value)):
+            raise ValueError("A reference document can be selected only once.")
         return value
 
 
@@ -173,6 +183,13 @@ def _view(db: Session, run: ResearchRun) -> ResearchView:
         payload = dict(evidence_view.payload)
         synthesis = payload.get("result")
         if isinstance(synthesis, dict):
+            synthesis = comparison_presentation(
+                synthesis,
+                verified_evidence,
+                profile_json or {},
+                run.goal,
+                (run.plan_json or {}).get("plan", {}).get("document_ids", []),
+            )
             payload["result"] = {
                 **synthesis,
                 "findings": refreshed_findings or synthesis.get("findings", []),
@@ -269,9 +286,7 @@ def reconcile_stale_research_runs(db: Session, settings, redis) -> int:
         timestamp = data.get("queued_at")
         try:
             since = (
-                datetime.fromisoformat(timestamp)
-                if isinstance(timestamp, str)
-                else run.created_at
+                datetime.fromisoformat(timestamp) if isinstance(timestamp, str) else run.created_at
             )
             if since.tzinfo is None:
                 since = since.replace(tzinfo=UTC)
@@ -309,7 +324,7 @@ def reconcile_stale_research_runs(db: Session, settings, redis) -> int:
     return changed
 
 
-def _propose_plan(settings, run, user, dataset_id, revision_feedback=None):
+def _propose_plan(settings, run, user, dataset_id, revision_feedback=None, document_ids=None):
     state = build_planning_graph(settings).invoke(
         {
             "run_id": str(run.id),
@@ -318,6 +333,7 @@ def _propose_plan(settings, run, user, dataset_id, revision_feedback=None):
             "dataset_version_id": str(run.dataset_version_id),
             "question": run.goal,
             "revision_feedback": revision_feedback,
+            "knowledge_document_ids": [str(value) for value in (document_ids or [])],
             "profile": {},
             "ml_runs": [],
             "plan": {},
@@ -346,19 +362,40 @@ def create_research(request: Request, payload: ResearchCreate, user: CurrentUser
     if version is None:
         raise AppError(404, "VERSION_NOT_FOUND", "Dataset version not found.")
     dataset, version, _ = dataset_context(db, user.id, version.id)
+    if payload.document_ids:
+        selected_documents = db.scalars(
+            select(DatasetDocument).where(
+                DatasetDocument.owner_id == user.id,
+                DatasetDocument.id.in_(payload.document_ids),
+                DatasetDocument.status == "indexed",
+                DatasetDocument.embedding_model == settings.rag_embedding_model,
+                DatasetDocument.embedding_dimensions == settings.rag_embedding_dimensions,
+            )
+        ).all()
+        if len(selected_documents) != len(payload.document_ids):
+            raise AppError(
+                422,
+                "DOCUMENTS_NOT_READY",
+                "Choose only documents that are indexed and available to your account.",
+            )
     run = ResearchRun(
         owner_id=user.id,
         dataset_version_id=version.id,
         goal=payload.question.strip(),
         status="draft",
         max_steps=settings.max_research_steps,
-        plan_json={"planning_started_at": datetime.now(UTC).isoformat()},
+        plan_json={
+            "planning_started_at": datetime.now(UTC).isoformat(),
+            "document_ids": [str(value) for value in payload.document_ids],
+        },
     )
     db.add(run)
     db.commit()
     db.refresh(run)
     try:
-        plan_json = _propose_plan(settings, run, user, dataset.id)
+        plan_json = _propose_plan(
+            settings, run, user, dataset.id, document_ids=payload.document_ids
+        )
         run.plan_json = {
             "plan": plan_json,
             "plan_hash": plan_digest(plan_json),
@@ -529,6 +566,7 @@ def revise_research(
             user,
             dataset.id,
             revision.feedback.strip(),
+            document_ids=[UUID(value) for value in prior_plan.get("document_ids", [])],
         )
         run.plan_json = {
             **run.plan_json,

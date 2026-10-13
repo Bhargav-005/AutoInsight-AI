@@ -41,8 +41,10 @@ def provision_role(settings):
             cursor.execute(
                 "GRANT INSERT, UPDATE ON users, sessions, datasets, stored_artifacts, "
                 "dataset_versions, dataset_profiles, cleaning_plans, ml_runs, research_runs, "
-                "agent_steps, evidence_items TO autoinsight_app"
+                "agent_steps, evidence_items, dataset_documents, document_chunks, reports "
+                "TO autoinsight_app"
             )
+            cursor.execute("GRANT DELETE ON document_chunks TO autoinsight_app")
             cursor.execute("GRANT INSERT ON model_metrics, predictions TO autoinsight_app")
             cursor.execute("GRANT INSERT ON audit_events TO autoinsight_app")
     finally:

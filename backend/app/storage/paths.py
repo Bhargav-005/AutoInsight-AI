@@ -4,7 +4,7 @@ from pathlib import Path
 from time import time
 from uuid import uuid4
 
-REFERENCE = re.compile(r"[0-9a-f]{32}\.(?:bin|json|txt|csv|xlsx|parquet|pdf|joblib|png)\Z")
+REFERENCE = re.compile(r"[0-9a-f]{32}\.(?:bin|json|txt|csv|xlsx|parquet|pdf|docx|joblib|png)\Z")
 
 
 class ArtifactStore:

@@ -53,6 +53,15 @@ class Settings(BaseSettings):
     llm_thinking: bool = False
     max_concurrent_research_runs: int = Field(default=1, ge=1, le=2)
     max_research_steps: int = Field(default=12, ge=1, le=12)
+    rag_embedding_model: str = "all-minilm:22m"
+    rag_embedding_dimensions: int = Field(default=384, ge=1, le=4096)
+    max_document_bytes: int = Field(default=25_000_000, ge=1, le=25_000_000)
+    max_document_text_bytes: int = Field(default=5_000_000, ge=1024, le=10_000_000)
+    max_document_pages: int = Field(default=500, ge=1, le=2000)
+    document_chunk_chars: int = Field(default=800, ge=400, le=4000)
+    document_chunk_overlap: int = Field(default=120, ge=0, le=1000)
+    document_embed_batch_size: int = Field(default=8, ge=1, le=16)
+    rag_min_similarity: float = Field(default=0.15, ge=0.0, le=1.0)
 
     @property
     def secure_cookies(self) -> bool:
@@ -82,6 +91,12 @@ class Settings(BaseSettings):
         _ = ollama.port
         if not self.ollama_model.strip() or len(self.ollama_model) > 100:
             raise ValueError("Configure a valid local Ollama model name")
+        if self.rag_embedding_dimensions != 384:
+            raise ValueError("The document vector migration supports 384-dimensional embeddings")
+        if not self.rag_embedding_model.strip() or len(self.rag_embedding_model) > 100:
+            raise ValueError("Configure a valid local embedding model name")
+        if self.document_chunk_overlap >= self.document_chunk_chars:
+            raise ValueError("Document chunk overlap must be smaller than chunk size")
         if self.app_env == "production":
             if len(self.auth_csrf_secret.get_secret_value()) < 32:
                 raise ValueError("Production requires a persistent CSRF secret")

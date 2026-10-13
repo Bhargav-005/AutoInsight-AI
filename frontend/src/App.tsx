@@ -17,6 +17,7 @@ const Research = lazy(() => import('./pages/Research'))
 const Analytics = lazy(() => import('./pages/Analytics'))
 const Models = lazy(() => import('./pages/Models'))
 const History = lazy(() => import('./pages/History'))
+const Knowledge = lazy(() => import('./pages/Knowledge'))
 const Landing = lazy(() => import('./pages/Landing'))
 
 export function AppRoutes() {
@@ -68,6 +69,7 @@ function SessionRoutes() {
               <Route path="/analysis/:id" element={<Analytics />} />
               <Route path="/models/:id" element={<Models />} />
               <Route path="/history" element={<History />} />
+              <Route path="/knowledge" element={<Knowledge />} />
             </Route>
           </Route>
           <Route element={<Shell />}>

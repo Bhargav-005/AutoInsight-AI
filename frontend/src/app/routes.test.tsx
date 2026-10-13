@@ -40,7 +40,9 @@ const mount = (route: string) => {
       vi.fn((input: RequestInfo | URL) => {
         const url = String(input)
         const error = { code: 'DATASET_NOT_FOUND', message: 'Dataset not found.' }
-        const data = url.endsWith('/datasets?page=1&page_size=20')
+        const data = url.endsWith('/documents') || url.endsWith('/reports')
+          ? []
+          : url.endsWith('/datasets?page=1&page_size=20')
           ? { items: [], page: 1, page_size: 100, total: 0 }
           : url.includes('/datasets/')
             ? null
@@ -130,6 +132,7 @@ describe('workspace routes', () => {
     ['/analysis/sample-retail', 'Choose a dataset'],
     ['/models/preview', 'ML Studio'],
     ['/history', 'Reports & history'],
+    ['/knowledge', 'Knowledge Base'],
     ['/missing', 'Page not found'],
   ])('renders %s without claiming backend results', async (route, heading) => {
     mount(route)

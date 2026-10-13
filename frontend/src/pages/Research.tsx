@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { Activity, BookOpen, CheckCheck, FileText, FlaskConical, Network, Play, RefreshCw, SlidersHorizontal, X } from 'lucide-react'
-import { api, type DatasetSummary, type DatasetVersion, type ResearchRun, type ResearchStep } from '../api/client'
+import { api, type DatasetSummary, type DatasetVersion, type ReferenceDocument, type ResearchRun, type ResearchStep } from '../api/client'
 import { isDatasetId } from '../app/datasetId'
 import { Badge, Empty, PageHeader, Panel, ResourceFeedback } from '../components/ui'
 
@@ -16,6 +16,13 @@ const roles: { id: ResearchStep['agent_role']; name: string; icon: typeof Activi
 ]
 
 type DatasetCollection = { items: DatasetSummary[] }
+type Comparison = {
+  claim: string
+  dataset_evidence_id: string
+  dataset_version_id: string
+  target_met: boolean
+  citations: { source_filename: string; page_number: number | null; chunk_id: string; excerpt: string; evidence_id: string }[]
+}
 type Feedback = { kind: 'failed'; message: string }
 
 function statusTone(status: ResearchRun['status']): 'neutral' | 'teal' | 'copper' | 'error' {
@@ -39,16 +46,19 @@ export default function Research() {
   const [question, setQuestion] = useState('')
   const [revisionFeedback, setRevisionFeedback] = useState('')
   const [history, setHistory] = useState<ResearchRun[]>([])
+  const [documents, setDocuments] = useState<ReferenceDocument[]>([])
+  const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>([])
   const [activeRun, setActiveRun] = useState<ResearchRun | null>(null)
   const [feedback, setFeedback] = useState<Feedback | null>(null)
   const [busy, setBusy] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [reportMessage, setReportMessage] = useState('')
 
   const readyDatasets = useMemo(() => datasets.filter((item) => item.status === 'ready'), [datasets])
   const selectedDataset = readyDatasets.find((item) => item.id === datasetId)
   const running = activeRun && ['queued', 'running'].includes(activeRun.status)
   const finalEvidence = activeRun?.evidence.find((item) => item.evidence_type === 'synthesize_evidence')
-  const finalResult = finalEvidence?.payload.result as { interpretation?: string; findings?: { claim: string; evidence_id: string; exact: boolean }[]; limitations?: string[] } | undefined
+  const finalResult = finalEvidence?.payload.result as { comparisons?: Comparison[]; interpretation?: string; findings?: { claim: string; evidence_id: string; exact: boolean }[]; document_findings?: { claim: string; citations: { source_filename: string; page_number: number | null; chunk_id: string; excerpt: string }[] }[]; limitations?: string[] } | undefined
 
   const loadHistory = useCallback(async () => {
     const result = await api<ResearchRun[]>('/research')
@@ -63,12 +73,14 @@ export default function Research() {
     const controller = new AbortController()
     async function load() {
       try {
-        const [collection, runs] = await Promise.all([
+        const [collection, runs, references] = await Promise.all([
           api<DatasetCollection>('/datasets?page=1&page_size=100', { signal: controller.signal }),
           api<ResearchRun[]>('/research', { signal: controller.signal }),
+          api<ReferenceDocument[]>('/documents', { signal: controller.signal }),
         ])
         setDatasets(collection.items)
         setHistory(runs)
+        setDocuments(references)
         setDatasetId((current) => {
           const requested = isDatasetId(routeDatasetId) ? routeDatasetId : current
           return collection.items.some((item) => item.id === requested && item.status === 'ready')
@@ -130,11 +142,25 @@ export default function Research() {
     try {
       const run = await api<ResearchRun>('/research', {
         method: 'POST',
-        body: { dataset_id: selectedDataset.id, dataset_version_id: versionId, question: question.trim() },
+        body: { dataset_id: selectedDataset.id, dataset_version_id: versionId, question: question.trim(), document_ids: selectedDocumentIds },
         timeoutMs: 180_000,
       })
       setActiveRun(run)
       await loadHistory()
+    } catch (error) {
+      setFeedback({ kind: 'failed', message: (error as Error).message })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function generateReport() {
+    if (!activeRun || activeRun.status !== 'completed') return
+    setBusy(true)
+    setReportMessage('')
+    try {
+      const report = await api<{ id: string }>('/reports', { method: 'POST', body: { research_run_id: activeRun.id } })
+      setReportMessage(`Report queued (${report.id.slice(0, 8)}). Track and download it in Reports & History.`)
     } catch (error) {
       setFeedback({ kind: 'failed', message: (error as Error).message })
     } finally {
@@ -216,6 +242,11 @@ export default function Research() {
             <label className="research-field">Research question
               <textarea rows={4} maxLength={1000} value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Which region has the highest average profit? Provide the exact average and evidence." />
             </label>
+            <fieldset className="research-field">
+              <legend>Reference documents (optional)</legend>
+              {documents.filter((item) => item.status === 'indexed').length ? documents.filter((item) => item.status === 'indexed').map((item) => <label className="approval-check" key={item.id}><input type="checkbox" checked={selectedDocumentIds.includes(item.id)} onChange={(event) => setSelectedDocumentIds((current) => event.target.checked ? [...current, item.id] : current.filter((id) => id !== item.id))} />{item.source_filename}</label>) : <small>No indexed documents. <Link to="/knowledge">Open Knowledge Base</Link>.</small>}
+              <small>Selected source IDs are bound into the approved plan. Only retrieved passages can support document claims.</small>
+            </fieldset>
             <button className="button full-width" onClick={() => void createPlan()} disabled={busy || !selectedDataset || !versionId || question.trim().length < 8}>
               {busy ? 'Planning with local Ollama…' : 'Generate research plan'}
             </button>
@@ -261,7 +292,12 @@ export default function Research() {
                 </Panel>
 
                 <Panel title="Verified findings and evidence" subtitle={`Dataset ${activeRun.dataset_id} · version ${activeRun.dataset_version_id}`}>
-                  {activeRun.status === 'completed' && finalResult ? <div className="research-final"><p>{finalResult.interpretation}</p>{finalResult.findings?.length ? <ul>{finalResult.findings.map((finding, index) => <li key={`${finding.evidence_id}-${index}`}>{finding.claim} <Badge tone={finding.exact ? 'teal' : 'copper'}>{finding.exact ? 'exact' : 'estimated'}</Badge></li>)}</ul> : <p>No quantitative finding was supported by verified evidence.</p>}{finalResult.limitations?.map((item, index) => <p className="warning-note" key={`${item}-${index}`}>{item}</p>)}</div> : activeRun.status !== 'completed' ? <p className="muted">Findings appear after deterministic evidence has passed verification.</p> : null}
+                  {activeRun.status === 'completed' && finalResult ? <div className="research-final"><p>{finalResult.interpretation}</p>{finalResult.findings?.length ? <ul>{finalResult.findings.map((finding, index) => <li key={`${finding.evidence_id}-${index}`}>{finding.claim} <Badge tone={finding.exact ? 'teal' : 'copper'}>{finding.exact ? 'exact' : 'estimated'}</Badge></li>)}</ul> : <p>No quantitative finding was supported by verified evidence.</p>}{finalResult.comparisons?.map((comparison) => <article className="research-evidence" key={`${comparison.dataset_evidence_id}-${comparison.claim}`}>
+                    <strong>{comparison.claim}</strong>
+                    <p><Badge tone={comparison.target_met ? 'teal' : 'copper'}>{comparison.target_met ? 'Target met' : 'Target not met'}</Badge></p>
+                    <small>Dataset evidence {comparison.dataset_evidence_id} · version {comparison.dataset_version_id}</small>
+                    {comparison.citations.map((citation) => <blockquote key={citation.chunk_id}><p>{citation.excerpt}</p><small>{citation.source_filename}{citation.page_number ? ` · page ${citation.page_number}` : ''} · passage {citation.chunk_id} · document evidence {citation.evidence_id}</small></blockquote>)}
+                  </article>)}{finalResult.document_findings?.map((finding, index) => <article className="research-evidence" key={`${finding.claim}-${index}`}><strong>{finding.claim}</strong>{finding.citations.map((citation) => <blockquote key={citation.chunk_id}><p>{citation.excerpt}</p><small>{citation.source_filename}{citation.page_number ? ` · page ${citation.page_number}` : ''} · passage {citation.chunk_id.slice(0, 8)}</small></blockquote>)}</article>)}{finalResult.limitations?.map((item, index) => <p className="warning-note" key={`${item}-${index}`}>{item}</p>)}<button className="button secondary" disabled={busy} onClick={() => void generateReport()}><FileText size={16} />Generate PDF report</button>{reportMessage && <p role="status">{reportMessage} <Link to="/history">Open Reports &amp; History</Link></p>}</div> : activeRun.status !== 'completed' ? <p className="muted">Findings appear after deterministic evidence has passed verification.</p> : null}
                   {activeRun.evidence.map((item) => <details className="research-evidence" key={item.id}><summary>{item.evidence_type} · evidence {item.id.slice(0, 8)}</summary><pre>{JSON.stringify(item.payload, null, 2)}</pre></details>)}
                 </Panel>
               </>

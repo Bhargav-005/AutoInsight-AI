@@ -15,6 +15,7 @@ from sqlalchemy import (
     Double,
     ForeignKey,
     ForeignKeyConstraint,
+    Index,
     Integer,
     String,
     Text,
@@ -283,6 +284,9 @@ class Report(Identity, Created, Owned, Base):
     research_run_id: Mapped[UUID] = mapped_column(index=True)
     artifact_id: Mapped[UUID | None]
     status: Mapped[str] = mapped_column(Text)
+    error_message: Mapped[str | None] = mapped_column(Text)
+    job_id: Mapped[str | None] = mapped_column(String(120), unique=True)
+    source_json: Mapped[dict] = mapped_column(JSONB, server_default="{}")
     __table_args__ = owned(
         parent("research_run_id", "research_runs"),
         parent("artifact_id", "stored_artifacts"),
@@ -294,10 +298,30 @@ class DatasetDocument(Identity, Created, Owned, Base):
     __tablename__ = "dataset_documents"
     dataset_id: Mapped[UUID | None] = mapped_column(index=True)
     title: Mapped[str] = mapped_column(Text)
+    source_filename: Mapped[str] = mapped_column(String(255))
+    file_type: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text)
+    page_count: Mapped[int | None]
+    chunk_count: Mapped[int] = mapped_column(Integer, server_default="0")
+    processing_error: Mapped[str | None] = mapped_column(Text)
+    embedding_model: Mapped[str | None] = mapped_column(Text)
+    embedding_dimensions: Mapped[int | None]
+    job_id: Mapped[str | None] = mapped_column(String(120), unique=True)
+    attempt_count: Mapped[int] = mapped_column(Integer, server_default="0")
+    processing_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     source_artifact_id: Mapped[UUID | None]
     __table_args__ = owned(
         parent("dataset_id", "datasets", delete="CASCADE"),
         parent("source_artifact_id", "stored_artifacts"),
+        Index("ix_dataset_documents_owner_id_status", "owner_id", "status"),
+        choices("status", "queued processing indexed failed removed"),
+        CheckConstraint("chunk_count >= 0", name="nonnegative_chunk_count"),
+        CheckConstraint("page_count IS NULL OR page_count > 0", name="positive_page_count"),
+        CheckConstraint("attempt_count >= 0", name="nonnegative_attempt_count"),
+        CheckConstraint(
+            "embedding_dimensions IS NULL OR embedding_dimensions = 384",
+            name="supported_embedding_dimensions",
+        ),
     )
 
 
@@ -308,12 +332,14 @@ class DocumentChunk(Identity, Base):
     )
     chunk_index: Mapped[int]
     content: Mapped[str] = mapped_column(Text)
-    embedding: Mapped[list | None] = mapped_column(Vector())
+    embedding: Mapped[list | None] = mapped_column(Vector(384))
+    page_number: Mapped[int | None]
+    location: Mapped[str | None] = mapped_column(Text)
     metadata_json: Mapped[dict] = mapped_column(JSONB, server_default="{}")
     __table_args__ = (
         UniqueConstraint("document_id", "chunk_index"),
         CheckConstraint("chunk_index >= 0", name="nonnegative_chunk"),
-        CheckConstraint("embedding IS NULL", name="embedding_model_not_configured"),
+        CheckConstraint("page_number IS NULL OR page_number > 0", name="positive_page_number"),
     )
 
 
