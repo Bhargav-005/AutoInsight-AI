@@ -107,6 +107,7 @@ def extract_document(data: bytes, filename: str, settings) -> tuple[str, int | N
                             "location": f"Page {page_number}",
                         }
                     )
+                    _check_text_size(segments, settings.max_document_text_bytes)
         except DocumentProcessingError:
             raise
         except Exception:
@@ -213,14 +214,20 @@ def chunk_segments(segments: list[dict], chunk_chars: int, overlap: int) -> list
     chunks = []
     start = 0
     while start < len(document_text):
-        end = min(start + chunk_chars, len(document_text))
+        while start < len(document_text) and document_text[start].isspace():
+            start += 1
+        if start >= len(document_text):
+            break
+        source = next(item for item in ranges if item[0] <= start < item[1])
+        # PDF citations name one page; never attach a later page's text to that page.
+        page_end = source[1] if source[2] is not None else len(document_text)
+        end = min(start + chunk_chars, page_end)
         if end < len(document_text):
             boundary = document_text.rfind(" ", start + int(chunk_chars * 0.65), end)
             if boundary > start:
                 end = boundary
         content = document_text[start:end].strip()
         if content:
-            source = next((item for item in ranges if item[0] <= start < item[1]), ranges[-1])
             chunks.append(
                 {
                     "content": content,
@@ -230,6 +237,9 @@ def chunk_segments(segments: list[dict], chunk_chars: int, overlap: int) -> list
             )
         if end >= len(document_text):
             break
+        if end == page_end:
+            start = end
+            continue
         next_start = max(start + 1, end - overlap)
         boundary = document_text.find(" ", next_start, min(end, next_start + 100))
         start = boundary + 1 if boundary >= 0 else next_start

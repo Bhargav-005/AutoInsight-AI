@@ -49,6 +49,58 @@ def test_text_document_chunks_keep_stable_offsets_and_page_metadata():
     assert chunks[0]["content"][-12:] in chunks[1]["content"]
 
 
+def test_pdf_chunks_never_attribute_text_to_the_wrong_page():
+    segments = [
+        {
+            "text": "First page contains only the northern result.",
+            "page_number": 1,
+            "location": "Page 1",
+        },
+        {
+            "text": "Second page contains only the southern result.",
+            "page_number": 2,
+            "location": "Page 2",
+        },
+    ]
+    chunks = chunk_segments(segments, 800, 120)
+    assert [(chunk["content"], chunk["page_number"]) for chunk in chunks] == [
+        (segment["text"], segment["page_number"]) for segment in segments
+    ]
+
+
+def test_complete_document_quote_is_attributed_and_citations_preserved():
+    from app.services.research import InsightResponse, _supported_document_findings
+
+    insight = InsightResponse(
+        interpretation="",
+        limitations=[],
+        document_findings=[{"claim": "South profit was 8500.", "citation_chunk_ids": ["chunk"]}],
+    )
+    evidence = [
+        {
+            "id": "evidence",
+            "verified": True,
+            "payload": {
+                "tool_name": "retrieve_documents",
+                "result": {
+                    "passages": [
+                        {
+                            "chunk_id": "chunk",
+                            "document_id": "doc",
+                            "source_filename": "notes.txt",
+                            "excerpt": "South profit was 8500. North profit was 10000.",
+                        }
+                    ]
+                },
+            },
+        }
+    ]
+    findings, rejected = _supported_document_findings(insight, evidence, [], ["doc"])
+    assert not rejected
+    assert findings[0]["claim"] == 'The document states: "South profit was 8500."'
+    assert findings[0]["citations"][0]["evidence_id"] == "evidence"
+
+
 def test_pdf_and_docx_extraction_are_supported_and_scanned_pdf_is_rejected():
     pdf_io = BytesIO()
     pdf = canvas.Canvas(pdf_io)
@@ -99,6 +151,124 @@ def test_embedding_batches_reject_wrong_vector_dimensions(monkeypatch):
     with pytest.raises(AppError) as error:
         embed_texts(limits(), ["reference text"])
     assert error.value.code == "EMBEDDING_DIMENSION_MISMATCH"
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), True, 0.0])
+def test_embeddings_reject_nonfinite_boolean_and_zero_vectors(monkeypatch, value):
+    response = SimpleNamespace(
+        raise_for_status=lambda: None, json=lambda: {"embeddings": [[value] * 384]}
+    )
+    monkeypatch.setattr("app.services.embeddings.httpx.post", lambda *a, **kw: response)
+    with pytest.raises(AppError):
+        embed_texts(limits(), ["reference text"])
+
+
+@pytest.mark.parametrize(
+    "claim",
+    [
+        "South profit was 10000 and North profit was 8500.",
+        "South profit was not 8500.",
+        "South profit guarantees future returns of 8500.",
+    ],
+)
+def test_document_claims_cannot_reassign_numbers_or_reverse_meaning(claim):
+    from app.services.research import InsightResponse, _supported_document_findings
+
+    insight = InsightResponse(
+        interpretation="",
+        limitations=[],
+        document_findings=[{"claim": claim, "citation_chunk_ids": ["chunk"]}],
+    )
+    evidence = [
+        {
+            "id": "evidence",
+            "verified": True,
+            "payload": {
+                "tool_name": "retrieve_documents",
+                "result": {
+                    "passages": [
+                        {
+                            "chunk_id": "chunk",
+                            "document_id": "doc",
+                            "source_filename": "notes.txt",
+                            "excerpt": "South profit was 8500. North profit was 10000.",
+                        }
+                    ]
+                },
+            },
+        }
+    ]
+    assert _supported_document_findings(insight, evidence, [], ["doc"])[0] == []
+
+
+def test_document_synthesis_filters_references_outside_approved_scope():
+    from app.services.research import InsightResponse, _supported_document_findings
+
+    insight = InsightResponse(
+        interpretation="",
+        limitations=[],
+        document_findings=[{"claim": "South profit was 8500.", "citation_chunk_ids": ["chunk"]}],
+    )
+    evidence = [
+        {
+            "id": "evidence",
+            "verified": True,
+            "payload": {
+                "tool_name": "retrieve_documents",
+                "result": {
+                    "passages": [
+                        {
+                            "chunk_id": "chunk",
+                            "document_id": "unselected",
+                            "source_filename": "other.txt",
+                            "excerpt": "South profit was 8500.",
+                        }
+                    ]
+                },
+            },
+        }
+    ]
+    assert _supported_document_findings(insight, evidence, [], ["approved"])[0] == []
+
+
+def test_evidence_verification_rejects_retrieved_passages_outside_approved_documents():
+    from app.services.research import _execute_tool
+
+    owner_id, dataset_id, version_id = uuid4(), uuid4(), uuid4()
+    evidence = [
+        {
+            "id": "retrieval-evidence",
+            "payload": {
+                "dataset_id": str(dataset_id),
+                "dataset_version_id": str(version_id),
+                "agent_role": "knowledge",
+                "tool_name": "retrieve_documents",
+                "arguments": {"document_ids": ["approved"]},
+                "result": {
+                    "passages": [
+                        {
+                            "document_id": "unapproved",
+                            "chunk_id": "chunk",
+                            "excerpt": "private text",
+                        }
+                    ]
+                },
+            },
+        }
+    ]
+    result = _execute_tool(
+        None,
+        limits(),
+        owner_id,
+        SimpleNamespace(id=dataset_id),
+        SimpleNamespace(id=version_id),
+        {},
+        {"tool_name": "verify_evidence", "arguments": {}},
+        evidence,
+        ["approved"],
+        "Summarize the reference.",
+    )
+    assert result["result"]["checks"] == [{"evidence_id": "retrieval-evidence", "verified": False}]
 
 
 def test_knowledge_tool_search_is_bounded_to_approved_document_ids(monkeypatch):
@@ -282,6 +452,7 @@ def test_pdf_report_contains_evidence_and_document_citations():
     }
     reader = PdfReader(BytesIO(render_research_report(data)))
     text = "\n".join(page.extract_text() or "" for page in reader.pages)
+    assert len(reader.pages) == 1
     assert "South has the highest average profit: 8,500." in text
     assert "market.pdf" in text
     assert "Page 3" in text

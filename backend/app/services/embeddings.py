@@ -1,5 +1,6 @@
 """Serialized local Ollama embeddings for the configured semantic model."""
 
+import math
 from contextlib import contextmanager
 
 import httpx
@@ -66,7 +67,13 @@ def embed_texts(settings, texts: list[str]) -> list[list[float]]:
             or any(
                 not isinstance(vector, list)
                 or len(vector) != settings.rag_embedding_dimensions
-                or any(not isinstance(value, (int, float)) for value in vector)
+                or any(
+                    isinstance(value, bool)
+                    or not isinstance(value, (int, float))
+                    or not math.isfinite(value)
+                    for value in vector
+                )
+                or not any(value != 0 for value in vector)
                 for vector in embeddings
             )
         ):

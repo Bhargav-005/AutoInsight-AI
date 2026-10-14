@@ -4,7 +4,6 @@ import hashlib
 import json
 import re
 from datetime import UTC, datetime
-from decimal import Decimal, InvalidOperation
 from typing import Any, Literal, TypedDict
 from uuid import UUID
 
@@ -787,54 +786,24 @@ def aggregation_explanation_from_verified(
     return " ".join(dict.fromkeys(descriptions)) or None
 
 
-_CLAIM_STOPWORDS = {
-    "the",
-    "and",
-    "for",
-    "from",
-    "with",
-    "that",
-    "this",
-    "was",
-    "were",
-    "are",
-    "has",
-    "have",
-    "had",
-    "than",
-    "then",
-    "into",
-    "each",
-    "its",
-    "their",
-    "against",
-    "over",
-}
-
-
-def _number_tokens(value: str) -> set[str]:
-    values = re.findall(r"(?<!\w)-?\d[\d,]*(?:\.\d+)?%?", value)
-    normalized = set()
-    for item in values:
-        try:
-            number = Decimal(item.replace(",", "").rstrip("%"))
-            text = format(number.normalize(), "f")
-            normalized.add(text.rstrip("0").rstrip(".") if "." in text else text)
-        except InvalidOperation:
-            continue
-    return normalized
-
-
 def _supported_document_findings(
-    insight: InsightResponse, verified: list[dict], dataset_findings: list[dict]
+    insight: InsightResponse,
+    verified: list[dict],
+    dataset_findings: list[dict],
+    approved_document_ids: list[str],
 ) -> tuple[list[dict], bool]:
     passages = {}
+    approved = set(approved_document_ids)
     for item in verified:
         payload = item.get("payload", {})
         if payload.get("tool_name") != "retrieve_documents":
             continue
         for passage in payload.get("result", {}).get("passages", []):
-            if isinstance(passage, dict) and isinstance(passage.get("chunk_id"), str):
+            if (
+                isinstance(passage, dict)
+                and isinstance(passage.get("chunk_id"), str)
+                and passage.get("document_id") in approved
+            ):
                 passages[passage["chunk_id"]] = {**passage, "evidence_id": item["id"]}
 
     supported = []
@@ -845,27 +814,25 @@ def _supported_document_findings(
         if len(citations) != len(set(finding.citation_chunk_ids)) or not citations:
             rejected = True
             continue
-        source = " ".join(citation["excerpt"] for citation in citations)
-        claim_numbers = _number_tokens(finding.claim)
-        allowed_numbers = _number_tokens(source)
-        for dataset_finding in dataset_findings:
-            allowed_numbers.update(_number_tokens(dataset_finding["claim"]))
-        if not claim_numbers.issubset(allowed_numbers):
-            rejected = True
-            continue
-        terms = {
-            token
-            for token in re.findall(r"[a-z]{3,}", finding.claim.casefold())
-            if token not in _CLAIM_STOPWORDS
-        }
-        source_terms = set(re.findall(r"[a-z]{3,}", source.casefold()))
-        overlap = terms & source_terms
-        if terms and (len(overlap) < min(2, len(terms)) or len(overlap) / len(terms) < 0.35):
+        # Word/number overlap cannot prove entailment (values can be swapped or
+        # negated). Accept complete source sentences/lines, never model paraphrases.
+        claim = " ".join(finding.claim.split())
+        if not claim or any(
+            claim
+            not in {
+                " ".join(part.split())
+                for part in [
+                    citation["excerpt"],
+                    *re.split(r"(?<=[.!?])\s+|\n+", citation["excerpt"]),
+                ]
+            }
+            for citation in citations
+        ):
             rejected = True
             continue
         supported.append(
             {
-                "claim": finding.claim,
+                "claim": f'The document states: "{claim}"',
                 "citations": [
                     {
                         "document_id": citation["document_id"],
@@ -979,6 +946,25 @@ def _execute_tool(
                 and payload.get("tool_name") in ROLE_TOOLS.get(payload.get("agent_role"), set())
                 and isinstance(payload.get("result"), (dict, list))
             )
+            if payload.get("tool_name") == "retrieve_documents":
+                approved = set(approved_document_ids or [])
+                requested = set(payload.get("arguments", {}).get("document_ids", []))
+                result = payload.get("result", {})
+                result = result if isinstance(result, dict) else {}
+                retrieved = result.get("passages", [])
+                valid = (
+                    valid
+                    and bool(requested)
+                    and requested.issubset(approved)
+                    and isinstance(retrieved, list)
+                    and all(
+                        isinstance(passage, dict)
+                        and passage.get("document_id") in requested
+                        and isinstance(passage.get("chunk_id"), str)
+                        and isinstance(passage.get("excerpt"), str)
+                        for passage in retrieved
+                    )
+                )
             verified.append({"evidence_id": item["id"], "verified": bool(valid)})
         return {
             "result_type": name,
@@ -1050,7 +1036,7 @@ def _execute_tool(
             {
                 "research_question": research_question,
                 "task": (
-                    "Write concise document-based claims only when cited passages support them. "
+                    "Select complete verbatim sentences or lines from the cited passages. "
                     "For each claim, cite one to three exact chunk_id values from the retrieved "
                     "passages. Dataset values may be used only when they appear in verified tool "
                     "results. Never invent targets, values, page numbers or citations. "
@@ -1081,7 +1067,7 @@ def _execute_tool(
             ) from None
         insight.limitations = [text for text in insight.limitations if not re.search(r"\d", text)]
         document_findings, rejected_claim = _supported_document_findings(
-            insight, verified, findings
+            insight, verified, findings, approved_document_ids or []
         )
         if retrieval_attempted:
             if document_findings:
@@ -1102,7 +1088,10 @@ def _execute_tool(
                     "did not support them."
                 )
         else:
-            interpretation = insight.interpretation
+            interpretation = " ".join(item["claim"] for item in findings) or (
+                "The verified tool results are recorded below. They do not establish "
+                "a supported conclusion for this question."
+            )
         aggregation_explanation = aggregation_explanation_from_verified(verified, profile)
         return {
             "result_type": name,

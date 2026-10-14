@@ -165,7 +165,11 @@ def generate_report(report_id: str, owner_id: str) -> dict:
         item for item in synthesis.get("findings", []) if item.get("evidence_id") in verified_ids
     ]
     document_findings = list(synthesis.get("document_findings", [])) + [
-        {"claim": item["claim"], "citations": [dict(citation) for citation in item["citations"]]}
+        {
+            "claim": item["claim"],
+            "citations": [dict(citation) for citation in item["citations"]],
+            "is_comparison": True,
+        }
         for item in comparisons
     ]
     document_ids = {

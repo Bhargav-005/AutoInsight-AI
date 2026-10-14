@@ -131,3 +131,12 @@ def test_multiclass_metrics_and_stratified_support():
     assert "f1_macro" in result["metrics"]
     assert 0 <= result["metrics"]["roc_auc"] <= 1
     assert all(row["test"] >= 1 for row in result["class_distribution"])
+
+
+def test_seeded_training_is_reproducible():
+    frame, cols, config = fixture("regression", "random_forest_regressor")
+    config = config.model_copy(update={"random_seed": 29, "n_estimators": 20})
+    _, first = ml.train(frame, cols, config, "d" * 64)
+    _, second = ml.train(frame, cols, config, "d" * 64)
+    assert first["split_fingerprint"] == second["split_fingerprint"]
+    assert first["metrics"] == pytest.approx(second["metrics"])

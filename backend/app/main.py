@@ -85,9 +85,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         start = perf_counter()
         try:
             is_auth = request.url.path.startswith("/api/v1/auth/")
-            is_ml = request.url.path.startswith("/api/v1/ml-runs")
-            if (is_auth or is_ml) and request.method == "POST":
+            if request.method == "POST":
                 body_limit = 8192 if is_auth else 65536
+                if request.headers.get("content-type", "").startswith("multipart/form-data"):
+                    # Bound the entire stream before Starlette spools uploaded files.
+                    body_limit = (
+                        settings.max_document_bytes
+                        if request.url.path == "/api/v1/documents"
+                        else settings.max_upload_bytes
+                    ) + 65536
                 body = bytearray()
                 async for chunk in request.stream():
                     if len(body) + len(chunk) > body_limit:
@@ -97,7 +103,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             "REQUEST_TOO_LARGE",
                             "Authentication request is too large."
                             if is_auth
-                            else "ML request is too large.",
+                            else "Request is too large.",
                         )
                         break
                     body.extend(chunk)

@@ -1,4 +1,5 @@
 import time
+from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from uuid import UUID, uuid4
 
@@ -8,6 +9,7 @@ from reportlab.pdfgen import canvas
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
+from app.db.models import DatasetDocument
 from app.main import create_app
 from app.services.retrieval import search_documents
 
@@ -122,3 +124,25 @@ def test_document_indexing_retrieval_and_cross_owner_isolation():
         assert results[0]["source_filename"] == "regional-report.txt"
         assert results[0]["document_id"] == document_id
         assert hidden == []
+        assert post(other, f"/api/v1/documents/{document_id}/remove", {}).status_code == 404
+        assert post(other, f"/api/v1/documents/{document_id}/reindex", {}).status_code == 404
+        assert post(owner, f"/api/v1/documents/{document_id}/remove", {}).status_code == 200
+        with Session(owner.app.state.engine) as db:
+            assert (
+                search_documents(db, settings, UUID(owner_id), "South profit", [UUID(document_id)])
+                == []
+            )
+            # An interrupted test-owned job has no RQ mapping. Existing indexed chunks
+            # of other documents and other owners remain intact.
+            record = db.get(DatasetDocument, document_id)
+            record.status = "processing"
+            record.job_id = f"phase9-missing-{uuid4()}"
+            record.processing_started_at = datetime.now(UTC) - timedelta(hours=1)
+            db.commit()
+        recovered = next(
+            item
+            for item in owner.get("/api/v1/documents").json()["data"]
+            if item["id"] == document_id
+        )
+        assert recovered["status"] == "failed"
+        assert "interrupted" in recovered["processing_error"]

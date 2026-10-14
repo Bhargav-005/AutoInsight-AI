@@ -60,8 +60,8 @@ def render_research_report(data: dict) -> bytes:
         fontSize=13,
         leading=17,
         textColor=colors.HexColor("#176c66"),
-        spaceBefore=12,
-        spaceAfter=6,
+        spaceBefore=6,
+        spaceAfter=4,
         keepWithNext=True,
     )
     body = ParagraphStyle(
@@ -88,7 +88,7 @@ def render_research_report(data: dict) -> bytes:
         return Paragraph(escape(str(value)).replace("\n", "<br/>"), style)
 
     story = [
-        Spacer(1, 0.22 * inch),
+        Spacer(1, 0.05 * inch),
         Paragraph("AutoInsight AI", title),
         para("Research report", ParagraphStyle("ReportSubtitle", parent=body, alignment=TA_CENTER)),
         Spacer(1, 0.12 * inch),
@@ -139,11 +139,17 @@ def render_research_report(data: dict) -> bytes:
     story.append(para(data.get("methodology") or "No deterministic tool execution was recorded."))
     if data.get("tables"):
         for item in data["tables"]:
-            story.append(Paragraph(item["title"], heading))
+            story.append(para(item["title"], heading))
             headers = [para(str(value), label) for value in item["columns"]]
             rows = [headers]
             rows.extend([para(str(value), small) for value in row] for row in item["rows"][:20])
-            table = Table(rows, repeatRows=1, hAlign="LEFT")
+            table = Table(
+                rows,
+                colWidths=[document.width / len(headers)] * len(headers),
+                repeatRows=1,
+                hAlign="LEFT",
+                splitInRow=1,
+            )
             table.setStyle(
                 TableStyle(
                     [
@@ -160,7 +166,8 @@ def render_research_report(data: dict) -> bytes:
     story.append(Paragraph("Reference documents and citations", heading))
     if citations:
         for finding in citations:
-            story.append(para(finding["claim"]))
+            if not finding.get("is_comparison"):
+                story.append(para(finding["claim"]))
             for citation in finding["citations"]:
                 where = (
                     f"Page {citation['page_number']}"
@@ -178,11 +185,10 @@ def render_research_report(data: dict) -> bytes:
     else:
         story.append(para("No document-derived finding with a supported citation was recorded."))
 
-    story.append(Paragraph("Limitations", heading))
     limitations = data.get("limitations", [])
-    story.extend(para(f"- {item}") for item in limitations)
-    if not limitations:
-        story.append(para("No additional limitations were recorded."))
+    if limitations:
+        story.append(Paragraph("Limitations", heading))
+        story.extend(para(f"- {item}") for item in limitations)
     story.append(Paragraph("Conclusion", heading))
     story.append(
         para(

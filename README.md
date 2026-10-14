@@ -2,9 +2,9 @@
 
 AutoInsight AI is an explainable, local-first platform for tabular data analysis, supervised machine learning and evidence-backed local research.
 
-**Current delivery: Phase 7 — local research orchestration.** Authenticated users can request an Ollama-generated plan for an owned immutable dataset version, inspect and approve or reject it, then follow a LangGraph/RQ workflow across seven logical roles. Allowlisted deterministic tools produce persisted evidence; verification checks the dataset/version/tool provenance, and numerical findings are rendered from the stored calculation. Phases 1–6 remain available, including immutable cleaning, analytics and supervised ML.
+**Current delivery: Phase 8 — local knowledge and evidence reports.** Authenticated users can upload private TXT, selectable-text PDF or DOCX references, index them locally, and select them for a verified research run on an owned immutable dataset version. The seven logical LangGraph roles use allowlisted tools; the user approves the exact plan before execution. Deterministic analytics and target comparisons are stored with evidence and citations. Completed investigations can generate owner-scoped, checksum-verified PDF reports. Phases 1–6 remain available, including immutable cleaning, analytics and supervised ML.
 
-Document ingestion, embeddings, retrieval citations and PDF reports remain in Phase 8. Analytics is deterministic over bounded full versions; category and chart outputs are capped and results state their source and method. Profiles mark high-cardinality distinct counts and large-column medians as estimates. Registration requires a display name, valid email and 12–128 character password. No demo credentials are seeded.
+Analytics is deterministic over bounded full versions; category and chart outputs are capped and results state their source and method. Profiles mark high-cardinality distinct counts and large-column medians as estimates. Registration requires a display name, valid email and 12–128 character password. No demo credentials are seeded. Phase 9 quality and release verification is in progress; Phase 10 public access remains deferred.
 
 For normal development, start the infrastructure, migrate, and run the API and frontend as below. Open **Get Started** on the landing page. Visual sample controls are disabled by default; an explicit development-only `VITE_ENABLE_VISUAL_SAMPLES=true` enables labeled fixtures **after real sign-in**, solely for UI regression testing. They never establish authentication or bypass API authorization and are excluded from production builds.
 
@@ -91,7 +91,7 @@ See [Windows development](docs/development-windows.md) for configuration and tes
 - Require approval for persistent cleaning operations.
 - Use only allowlisted analytical tools; no generated Python or arbitrary shell/SQL execution.
 - Test each phase and report failures and limitations honestly.
-- Do not commit, push, advance to Phase 8 or configure public access without the required user approval.
+- Do not commit, push, advance to Phase 10 or configure public access without the required user approval.
 
 ## Phase 6 ML development
 

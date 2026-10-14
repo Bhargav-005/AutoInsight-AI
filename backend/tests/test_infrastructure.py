@@ -55,7 +55,7 @@ def test_postgres_extensions_and_migrations(infra):
             )
             assert (
                 connection.execute(text("SELECT version_num FROM alembic_version")).scalar()
-                == "0005_ml_engine"
+                == "0007_local_knowledge_and_reports"
             )
             assert set(
                 connection.execute(
@@ -68,7 +68,11 @@ def test_postgres_extensions_and_migrations(infra):
 
 def test_actual_readiness(infra):
     with TestClient(create_app(infra[0])) as client:
+        deadline = time.monotonic() + 30
         response = client.get("/api/v1/health/ready")
+        while response.status_code == 503 and time.monotonic() < deadline:
+            time.sleep(0.5)
+            response = client.get("/api/v1/health/ready")
         assert response.status_code == 200, response.text
         assert response.json()["data"]["status"] == "ready"
         assert all(
@@ -196,6 +200,11 @@ def test_persistence_and_real_outage(infra):
         wait_for_job(job, "finished")
         assert store.read(job.return_value()["reference"]) == marker.encode()
         with TestClient(create_app(settings)) as client:
-            assert client.get("/api/v1/health/ready").status_code == 200
+            deadline = time.monotonic() + 30
+            response = client.get("/api/v1/health/ready")
+            while response.status_code == 503 and time.monotonic() < deadline:
+                time.sleep(0.5)
+                response = client.get("/api/v1/health/ready")
+            assert response.status_code == 200, response.text
     finally:
         engine.dispose()

@@ -1,5 +1,6 @@
 import io
 import time
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
@@ -10,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
-from app.db.models import DatasetVersion, EvidenceItem, ResearchRun
+from app.db.models import DatasetVersion, EvidenceItem, Report, ResearchRun
 from app.main import create_app
 
 pytestmark = pytest.mark.integration
@@ -37,7 +38,7 @@ def register(client, suffix):
     return response.json()["data"]["id"]
 
 
-def test_report_generation_download_and_owner_isolation():
+def test_report_generation_download_and_owner_isolation(monkeypatch):
     settings = Settings(auth_rate_namespace=f"autoinsight:test:reports:{uuid4().hex}")
     fixture = Path(__file__).parent / "fixtures" / "phase7_sales.csv"
     with TestClient(create_app(settings)) as owner, TestClient(create_app(settings)) as other:
@@ -121,3 +122,18 @@ def test_report_generation_download_and_owner_isolation():
         assert "South has the highest average profit: 8,500." in text
         assert other.get("/api/v1/reports").json()["data"] == []
         assert other.get(f"/api/v1/reports/{report_id}/download").status_code == 404
+        assert other.get(f"/api/v1/reports/{report_id}").status_code == 404
+        assert post(other, "/api/v1/reports", {"research_run_id": run_id}).status_code == 404
+
+        # Hold only this test's dispatch to exercise duplicate requests and abandonment.
+        monkeypatch.setattr("app.api.reports._queue_report", lambda *args: None)
+        pending = post(owner, "/api/v1/reports", {"research_run_id": run_id}).json()["data"]
+        repeated = post(owner, "/api/v1/reports", {"research_run_id": run_id}).json()["data"]
+        assert repeated["id"] == pending["id"]
+        with Session(owner.app.state.engine) as db:
+            record = db.get(Report, pending["id"])
+            record.created_at = datetime.now(UTC) - timedelta(hours=1)
+            db.commit()
+        recovered = owner.get(f"/api/v1/reports/{pending['id']}").json()["data"]
+        assert recovered["status"] == "failed"
+        assert "interrupted" in recovered["error_message"]

@@ -131,6 +131,9 @@ def grouped(frame, groups: list[str], operation: str, metric: str | None):
         raise DatasetFileError("INVALID_OPERATION", "The aggregate operation is unsupported.")
     if operation == "count" and metric is None:
         result = frame.groupby(groups, dropna=False, observed=True).size().rename("value")
+    elif operation == "count" and metric in frame:
+        # Count nonmissing values regardless of their type; do not coerce text to NaN.
+        result = frame.groupby(groups, dropna=False, observed=True)[metric].count().rename("value")
     else:
         if metric not in frame:
             raise DatasetFileError("INVALID_COLUMN", "Select an available metric column.")
@@ -142,6 +145,7 @@ def grouped(frame, groups: list[str], operation: str, metric: str | None):
             [float("inf"), -float("inf")], pd.NA
         )
         metric_groups = typed.groupby(groups, dropna=False, observed=True)[metric]
+        valid_counts = metric_groups.count()
         if operation == "count":
             result = metric_groups.count().rename("value")
         elif operation == "sum":
@@ -151,9 +155,12 @@ def grouped(frame, groups: list[str], operation: str, metric: str | None):
     rows = []
     for key, value in result.items():
         if isinstance(value, (float, np.floating)) and not math.isfinite(float(value)):
-            raise DatasetFileError(
-                "NUMERIC_OVERFLOW", "The aggregate exceeds the supported numeric range."
-            )
+            if pd.isna(value) and valid_counts.loc[key] == 0:
+                value = None
+            else:
+                raise DatasetFileError(
+                    "NUMERIC_OVERFLOW", "The aggregate exceeds the supported numeric range."
+                )
         keys = key if isinstance(key, tuple) else (key,)
         rows.append(
             {

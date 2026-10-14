@@ -76,16 +76,20 @@ def index_document(document_id: str, owner_id: str, attempt: int) -> dict:
                 return {"status": "failed"}
             document.status = "processing"
             document.processing_started_at = datetime.now(UTC)
-            reference, expected_hash, filename = (
+            reference, expected_hash, expected_size, filename = (
                 artifact.relative_path,
                 artifact.sha256,
+                artifact.size_bytes,
                 document.source_filename,
             )
     finally:
         engine.dispose()
 
     try:
-        data = ArtifactStore(settings.file_storage_root).read(reference)
+        path = ArtifactStore(settings.file_storage_root).resolve(reference)
+        if path.stat().st_size != expected_size or expected_size > settings.max_document_bytes:
+            raise DocumentProcessingError("The stored document failed integrity verification.")
+        data = path.read_bytes()
         if hashlib.sha256(data).hexdigest() != expected_hash:
             raise DocumentProcessingError("The stored document failed integrity verification.")
         file_type, page_count, segments = extract_document(data, filename, settings)

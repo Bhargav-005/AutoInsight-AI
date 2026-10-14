@@ -95,7 +95,7 @@ def test_login_logout_revocation_and_generic_errors(account_api):
     client, db, settings = account_api
     assert client.get("/api/v1/auth/me").status_code == 401
     assert client.get("/api/v1/dashboard/overview").status_code == 401
-    register(client)
+    user_id = UUID(register(client).json()["data"]["id"])
     old = client.cookies[settings.session_cookie]
     assert post(client, "logout").status_code == 200
     assert settings.session_cookie not in client.cookies
@@ -103,6 +103,11 @@ def test_login_logout_revocation_and_generic_errors(account_api):
     client.cookies.set(settings.session_cookie, old, path="/api/v1")
     assert client.get("/api/v1/auth/me").status_code == 401
     client.cookies.clear()
+    anonymous_failures_before = db.scalar(
+        select(func.count())
+        .select_from(AuditEvent)
+        .where(AuditEvent.actor_id.is_(None), AuditEvent.event_type == "login_failed")
+    )
     messages = []
     for email in ["test@example.com", "missing@example.com"]:
         result = post(client, "login", {"email": email, "password": "Wrong password"})
@@ -115,15 +120,20 @@ def test_login_logout_revocation_and_generic_errors(account_api):
     )
     assert client.cookies[settings.session_cookie] != old
     assert client.get("/api/v1/auth/me").status_code == 200
-    events = set(db.scalars(select(AuditEvent.event_type)))
+    events = set(db.scalars(select(AuditEvent.event_type).where(AuditEvent.actor_id == user_id)))
     assert {
         "registration",
         "login_succeeded",
-        "login_failed",
         "logout",
         "session_revoked",
     } <= events
-    for event in db.scalars(select(AuditEvent)):
+    anonymous_failures_after = db.scalar(
+        select(func.count())
+        .select_from(AuditEvent)
+        .where(AuditEvent.actor_id.is_(None), AuditEvent.event_type == "login_failed")
+    )
+    assert anonymous_failures_after - anonymous_failures_before == 2
+    for event in db.scalars(select(AuditEvent).where(AuditEvent.actor_id == user_id)):
         assert event.meta_json == {}
 
 
@@ -356,7 +366,7 @@ def test_migrations_reproduce_all_tables_in_an_empty_transactional_schema():
                 }
                 assert (
                     connection.scalar(text(f'SELECT version_num FROM "{schema}".alembic_version'))
-                    == "0004_cleaning_plans"
+                    == "0007_local_knowledge_and_reports"
                 )
                 command.upgrade(config, "head")
             finally:

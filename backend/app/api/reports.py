@@ -15,6 +15,7 @@ from app.api.auth import DB, CurrentUser, Envelope, result
 from app.core.errors import AppError
 from app.core.security import require_csrf
 from app.db.models import AuditEvent, Dataset, DatasetVersion, Report, ResearchRun, StoredArtifact
+from app.services.job_recovery import abandoned_job
 from app.storage.paths import ArtifactStore
 from worker.connection import queue
 
@@ -43,6 +44,7 @@ def _report_view(db: Session, report: Report) -> ReportView:
             ResearchRun.owner_id == report.owner_id,
         )
     )
+
     version = (
         db.scalar(
             select(DatasetVersion).where(
@@ -72,6 +74,43 @@ def _report_view(db: Session, report: Report) -> ReportView:
         question=run.goal if run else "Research is unavailable.",
         dataset_name=dataset.display_name if dataset else "Dataset is unavailable",
     )
+
+
+def _recover_report(request, db, report):
+    if report.status not in {"queued", "running"} or not abandoned_job(
+        report.job_id,
+        report.created_at,
+        request.app.state.settings,
+        request.app.state.redis,
+    ):
+        return
+    current = db.scalar(
+        select(Report)
+        .where(
+            Report.id == report.id,
+            Report.owner_id == report.owner_id,
+        )
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if current.status in {"queued", "running"} and abandoned_job(
+        current.job_id,
+        current.created_at,
+        request.app.state.settings,
+        request.app.state.redis,
+    ):
+        current.status = "failed"
+        current.error_message = "Report generation was interrupted. Generate a new report."
+        db.add(
+            AuditEvent(
+                actor_id=current.owner_id,
+                event_type="report_job_abandoned",
+                entity_type="report",
+                entity_id=current.id,
+                meta_json={},
+            )
+        )
+    db.commit()
 
 
 def _queue_report(request: Request, db: Session, report: Report):
@@ -104,15 +143,29 @@ def _queue_report(request: Request, db: Session, report: Report):
 )
 def create_report(request: Request, payload: ReportCreate, user: CurrentUser, db: DB):
     run = db.scalar(
-        select(ResearchRun).where(
+        select(ResearchRun)
+        .where(
             ResearchRun.id == payload.research_run_id,
             ResearchRun.owner_id == user.id,
         )
+        .with_for_update()
     )
     if run is None:
         raise AppError(404, "RESEARCH_NOT_FOUND", "Research run not found.")
     if run.status != "completed":
         raise AppError(409, "RESEARCH_NOT_COMPLETE", "Generate a report after research completes.")
+    existing = db.scalar(
+        select(Report)
+        .where(
+            Report.owner_id == user.id,
+            Report.research_run_id == run.id,
+            Report.status.in_(("queued", "running")),
+        )
+        .order_by(Report.created_at.desc())
+        .limit(1)
+    )
+    if existing is not None:
+        return result(request, _report_view(db, existing))
     report = Report(
         owner_id=user.id,
         research_run_id=run.id,
@@ -149,6 +202,8 @@ def list_reports(request: Request, user: CurrentUser, db: DB):
         .order_by(Report.created_at.desc(), Report.id)
         .limit(100)
     ).all()
+    for report in reports:
+        _recover_report(request, db, report)
     return result(request, [_report_view(db, report) for report in reports])
 
 
@@ -157,6 +212,7 @@ def get_report(request: Request, report_id: UUID, user: CurrentUser, db: DB):
     report = db.scalar(select(Report).where(Report.id == report_id, Report.owner_id == user.id))
     if report is None:
         raise AppError(404, "REPORT_NOT_FOUND", "Report not found.")
+    _recover_report(request, db, report)
     return result(request, _report_view(db, report))
 
 

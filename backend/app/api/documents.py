@@ -1,6 +1,6 @@
 """Authenticated upload, indexing lifecycle and removal for private reference documents."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -19,6 +19,7 @@ from app.services.documents import (
     safe_source_filename,
     validate_document_upload,
 )
+from app.services.job_recovery import abandoned_job
 from app.storage.paths import ArtifactStore
 from worker.connection import queue
 
@@ -94,7 +95,50 @@ def list_documents(request: Request, user: CurrentUser, db: DB):
         .order_by(DatasetDocument.created_at.desc(), DatasetDocument.id)
         .limit(100)
     ).all()
+    for document in documents:
+        _recover_document(request, db, document)
     return result(request, [_view(db, document) for document in documents])
+
+
+def _recover_document(request, db, document):
+    if document.status not in {"queued", "processing"}:
+        return
+    if not abandoned_job(
+        document.job_id,
+        document.processing_started_at or document.created_at,
+        request.app.state.settings,
+        request.app.state.redis,
+    ):
+        return
+    # Lock and re-check after inspecting RQ: completion/reindex may have raced this read.
+    current = db.scalar(
+        select(DatasetDocument)
+        .where(
+            DatasetDocument.id == document.id,
+            DatasetDocument.owner_id == document.owner_id,
+        )
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if current.status in {"queued", "processing"} and abandoned_job(
+        current.job_id,
+        current.processing_started_at or current.created_at,
+        request.app.state.settings,
+        request.app.state.redis,
+    ):
+        current.status = "failed"
+        current.processing_error = "Document indexing was interrupted. Retry indexing."
+        current.processing_started_at = None
+        db.add(
+            AuditEvent(
+                actor_id=current.owner_id,
+                event_type="document_job_abandoned",
+                entity_type="dataset_document",
+                entity_id=current.id,
+                meta_json={},
+            )
+        )
+    db.commit()
 
 
 @router.post(
@@ -111,10 +155,10 @@ async def upload_document(
     dataset_id: Annotated[UUID | None, Form()] = None,
 ):
     settings = request.app.state.settings
-    filename = safe_source_filename(file.filename)
     raw = await file.read(settings.max_document_bytes + 1)
     await file.close()
     try:
+        filename = safe_source_filename(file.filename)
         file_type = validate_document_upload(raw, filename, settings)
     except DocumentProcessingError as exc:
         raise AppError(422, "INVALID_DOCUMENT", str(exc)) from None
@@ -195,6 +239,7 @@ def reindex_document(request: Request, document_id: UUID, user: CurrentUser, db:
     document.attempt_count += 1
     document.status = "queued"
     document.processing_error = None
+    document.processing_started_at = datetime.now(UTC)
     document.job_id = f"document-index-{document.id}-{document.attempt_count}"
     db.add(
         AuditEvent(

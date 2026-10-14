@@ -88,3 +88,16 @@ def test_numeric_overflow_is_reported_instead_of_returned_as_an_infinite_result(
     assert result["columns"][0]["numeric"]["mean"] == 1e308
     with pytest.raises(DatasetFileError, match="numeric range"):
         grouped(frame, ["column_002"], "sum", "column_001")
+
+
+def test_count_preserves_text_and_missing_group_values():
+    frame = pd.DataFrame({"group": ["A", "A", None], "label": ["one", None, "two"]})
+    rows, _ = grouped(frame, ["group"], "count", "label")
+    assert rows == [{"group": "A", "value": 1}, {"group": None, "value": 1}]
+
+
+@pytest.mark.parametrize("operation,expected", [("mean", 3), ("sum", 6), ("min", 2), ("max", 4)])
+def test_missing_only_group_returns_null_not_overflow(operation, expected):
+    frame = pd.DataFrame({"group": ["A", "A", "B"], "metric": [2.0, 4.0, None]})
+    rows, _ = grouped(frame, ["group"], operation, "metric")
+    assert rows == [{"group": "A", "value": expected}, {"group": "B", "value": None}]

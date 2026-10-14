@@ -4,6 +4,8 @@ from rq import Worker
 from rq.serializers import JSONSerializer
 from sqlalchemy import text
 
+CURRENT_SCHEMA_REVISION = "0007_local_knowledge_and_reports"
+
 
 def inspect_dependencies(engine, redis, settings) -> dict[str, dict[str, str]]:
     if not settings.infrastructure_enabled:
@@ -17,7 +19,10 @@ def inspect_dependencies(engine, redis, settings) -> dict[str, dict[str, str]]:
             connection.execute(text("SELECT 1"))
             extensions = set(connection.execute(text("SELECT extname FROM pg_extension")).scalars())
             revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar()
-            if not {"vector", "pgcrypto", "citext"} <= extensions or revision != "0005_ml_engine":
+            if (
+                not {"vector", "pgcrypto", "citext"} <= extensions
+                or revision != CURRENT_SCHEMA_REVISION
+            ):
                 raise RuntimeError("Migrations required")
         checks["postgres"] = {"status": "healthy", "message": "Connection and extensions verified."}
     except Exception:

@@ -82,3 +82,23 @@ def test_https_cookies_and_production_settings_cannot_be_downgraded():
         assert "Path=/api/v1" in cookie and "Max-Age=3600" in cookie
         assert "Domain=" not in cookie
         assert response.headers["cache-control"] == "no-store"
+
+
+@pytest.mark.parametrize(
+    "path,content_type",
+    [
+        ("/api/v1/research", "application/json"),
+        ("/api/v1/documents", "multipart/form-data; boundary=test"),
+        ("/api/v1/datasets", "multipart/form-data; boundary=test"),
+    ],
+)
+def test_all_write_streams_are_bounded_before_body_parsing(path, content_type):
+    from fastapi.testclient import TestClient
+
+    from app.core.config import Settings
+    from app.main import create_app
+
+    settings = Settings(infrastructure_enabled=False, max_upload_bytes=1, max_document_bytes=1)
+    with TestClient(create_app(settings)) as client:
+        response = client.post(path, content=b"x" * 65538, headers={"Content-Type": content_type})
+    assert response.status_code == 413
