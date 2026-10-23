@@ -74,12 +74,14 @@ describe('public landing page', () => {
     expect(
       screen.queryByRole('navigation', { name: 'Main navigation' }),
     ).not.toBeInTheDocument()
-    expect(
-      screen.getByText(/Data processing and AI execution are in development/),
-    ).toBeInTheDocument()
-    expect(
-      screen.getByText(/No analysis or agent execution/),
-    ).toBeInTheDocument()
+    expect(screen.getByText('An interactive product walkthrough')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /Your workflow/ })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /Depth at every step/ })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /A process you can follow/ })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /Seven roles/ })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /Built close to your data/ })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /A clearer view of your data/ })).toBeInTheDocument()
+    expect(screen.getByRole('contentinfo')).toBeInTheDocument()
     expect(
       screen.queryByRole('link', { name: /Explore Platform/ }),
     ).not.toBeInTheDocument()
@@ -87,26 +89,32 @@ describe('public landing page', () => {
   })
   it('exposes all seven planned roles with a single selected description', async () => {
     mount('/')
-    const roles = await screen.findByRole('group', {
+    const roles = await screen.findByRole('tablist', {
       name: 'Seven logical agent roles',
     })
-    const buttons = within(roles).getAllByRole('button')
+    const buttons = within(roles).getAllByRole('tab')
     expect(buttons).toHaveLength(7)
     for (const button of buttons) {
       fireEvent.click(button)
-      expect(within(roles).getAllByRole('button', { pressed: true })).toEqual([
+      expect(within(roles).getAllByRole('tab', { selected: true })).toEqual([
         button,
       ])
-      expect(document.getElementById('agent-description')).toHaveTextContent(
-        button.querySelector('strong')!.textContent!,
-      )
+      expect(button).toHaveAttribute('aria-controls', 'agent-description')
+      expect(document.getElementById('agent-description')).toHaveTextContent(button.querySelector('strong')!.textContent!)
     }
     expect(
       screen.getByRole('heading', {
         name: 'An explanation you can return to.',
       }),
     ).toBeInTheDocument()
-    expect(screen.getByText(/not an eighth agent/)).toBeInTheDocument()
+    expect(screen.getByText(/Seven logical roles within one governed workflow/)).toBeInTheDocument()
+  })
+  it('opens a useful product walkthrough from the hero', async () => {
+    mount('/')
+    fireEvent.click(await screen.findByRole('button', { name: /Watch Video/ }))
+    expect(screen.getByRole('dialog', { name: 'Product walkthrough' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Start with a dataset' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Open Datasets/ })).toHaveAttribute('href', '/datasets')
   })
   it.each([
     ['Get Started', 'Create your workspace'],
